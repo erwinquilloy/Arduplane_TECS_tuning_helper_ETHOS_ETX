@@ -1,7 +1,9 @@
-# Arduplane TECS tuning helper
+# Arduplane TECS tuning helper — Ethos / EdgeTX / OpenTX
 
 ### Description
-This OpenTX LUA script will navigate you through the steps to tune your plane TECS.
+This LUA script/widget will navigate you through the steps to tune your plane TECS.
+It runs on FrSky **Ethos** (X20S, X18/X18S), and on **EdgeTX/OpenTX** color and
+b/w radios (RadioMaster TX16S mk2/mk3, Horus X10/X12, Taranis X9D/Q7).
 The data will be processed and reformatted to Ardupilot parameter units (i.e. dm/s->kph) on the Transmitter directly.
 Finally the TECS will be displayed on the screen and saved to a logfile.
 
