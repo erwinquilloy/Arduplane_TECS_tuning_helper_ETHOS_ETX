@@ -1,9 +1,14 @@
-# Arduplane TECS tuning helper — Ethos / EdgeTX / OpenTX
+# Arduplane TECS tuning helper — Ethos / EdgeTX
+
+> A fork of **[mf0o](https://github.com/mf0o)**'s original
+> [opentx_arduplane_tecs_tuning_helper](https://github.com/mf0o/opentx_arduplane_tecs_tuning_helper),
+> extended with a FrSky **Ethos** port and updated for ArduPlane 4.5+ parameter
+> names. All the original design and workflow are mf0o's — full credit to them.
 
 ### Description
 This LUA script/widget will navigate you through the steps to tune your plane TECS.
-It runs on FrSky **Ethos** (X20S, X18/X18S), and on **EdgeTX/OpenTX** color and
-b/w radios (RadioMaster TX16S mk2/mk3, Horus X10/X12, Taranis X9D/Q7).
+This fork is focused on FrSky **Ethos** (X20S, X18/X18S) and **EdgeTX** radios
+(RadioMaster TX16S mk2/mk3, Horus X10/X12, Taranis X9D/Q7).
 The data will be processed and reformatted to Ardupilot parameter units (i.e. dm/s->kph) on the Transmitter directly.
 Finally the TECS will be displayed on the screen and saved to a logfile.
 
@@ -36,7 +41,7 @@ The process can not be paused or aborted but repeated as many times as needed.
 The Ethos version is a single self-contained widget that adapts to the radio's
 screen size (verified layout logic for both 800x480 and 480x320/272 displays).
 It reads ArduPilot **CRSF passthrough** telemetry (Crossfire & ELRS), same as the
-OpenTX version.
+EdgeTX version.
 
 * copy the whole `ETHOS/scripts/tecs/` folder to your SD-card `/scripts/tecs/`
 * choose a voice and extract the `tecs*.wav` files from `SOUNDS/<voice>.zip`
@@ -49,12 +54,12 @@ OpenTX version.
       widget uses the throttle value reported by ArduPilot's VFR telemetry
 * open the screen and confirm Pitch/Roll update when you move the aircraft
 
-Requirements on the aircraft side are identical to the OpenTX version
+Requirements on the aircraft side are identical to the EdgeTX version
 (ArduPilot frsky passthrough over CRSF). Logfiles are written to
 `/scripts/tecs/tecs_<timestamp>.txt`.
 
-### Installation Horus / EdgeTX color radios (RadioMaster TX16S mk2 & mk3, Horus X10/X12, ...)
-This is the OpenTX/EdgeTX widget. It runs unchanged on any 480x272 color widget
+### Installation EdgeTX color radios (RadioMaster TX16S mk2 & mk3, Horus X10/X12, ...)
+This is the EdgeTX widget. It runs unchanged on any 480x272 color widget
 radio, including the RadioMaster **TX16S mk2 and mk3** (both run EdgeTX with the
 same Lua widget API — no separate build is needed for either revision).
 
@@ -109,6 +114,7 @@ same Lua widget API — no separate build is needed for either revision).
 [https://notes.stavros.io/ardupilot/tecs-tuning-calculator/](https://notes.stavros.io/ardupilot/tecs-tuning-calculator/)
 
 ###### ... with many thanks to:
+* [https://github.com/mf0o](https://github.com/mf0o) — original author of this project
 * [https://github.com/shellixyz](https://github.com/shellixyz)
 * [https://github.com/yaapu](https://github.com/yaapu)
 * [https://github.com/skorokithakis](https://github.com/skorokithakis)
