@@ -482,7 +482,7 @@ local function configure(widget)
 
   -- OFF = CRSF passthrough (Crossfire/ELRS); ON = FrSky SPort passthrough (R9 etc.)
   line = form.addLine("FrSky SPort link (R9)")
-  form.addBooleanField(line,
+  form.addBooleanField(line, nil,
     function() return widget.useSport end,
     function(v) widget.useSport = v end)
 end
