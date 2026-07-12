@@ -27,3 +27,7 @@
                         so its exporter converts dm/s -> m/s (fixes a 100x unit error).
                         TECS_*/THR_MAX/TRIM_THROTTLE/FBWB_CLIMB_RATE/STAB_PITCH_DOWN/KFF_THR2PTCH
                         unchanged.
+* v0.2.4    13.07.2026  OpenTX/EdgeTX (Horus widget + x9D/Q7 scripts): same ArduPlane 4.5+
+                        parameter rename as v0.3.1. AIRSPEED_CRUISE exporter now DMS_to_MS
+                        (dm/s -> m/s), fixing the 100x cm/s error. Applies to WIDGETS/TECS/main.lua,
+                        SCRIPTS/FUNCTIONS/tecs.lua and SCRIPTS/TELEMETRY/tecsX9.lua.

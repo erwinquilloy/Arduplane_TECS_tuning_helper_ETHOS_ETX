@@ -1,4 +1,4 @@
--- tecs tuning advisor, telemetry gateway,  v0.2.3
+-- tecs tuning advisor, telemetry gateway,  v0.2.4
 
 -- This program is free software; you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -422,11 +422,11 @@ local function run(e)
 --1
   lcd.drawText(1,8,"TRIM_THROTTLE:", 0)
   lcd.drawText(lcd.getLastPos()+2,8, exportTECS('TRIM_THROTTLE') ,0)
-  lcd.drawText(1,16,"TRIM_ARSPD_CM:", 0)
-  lcd.drawText(lcd.getLastPos()+2,16, exportTECS('TRIM_ARSPD_CM') ,0)
+  lcd.drawText(1,16,"AIRSPEED_CRUISE:", 0)
+  lcd.drawText(lcd.getLastPos()+2,16, exportTECS('AIRSPEED_CRUISE') ,0)
 --2
-  lcd.drawText(1,24,"ARSPD_FBW_MAX:", 0)
-  lcd.drawText(lcd.getLastPos()+2,24, exportTECS('ARSPD_FBW_MAX') ,0)
+  lcd.drawText(1,24,"AIRSPEED_MAX:", 0)
+  lcd.drawText(lcd.getLastPos()+2,24, exportTECS('AIRSPEED_MAX') ,0)
   lcd.drawText(1,32,"THR_MAX:", 0)
   lcd.drawText(lcd.getLastPos()+2,32, exportTECS('THR_MAX') ,0)
 --3
@@ -435,8 +435,8 @@ local function run(e)
   lcd.drawText(1,48,"FBWB_CLIMB_RATE:", 0)
   lcd.drawText(lcd.getLastPos()+2,48, exportTECS('FBWB_CLIMB_RATE') ,0)
 --4
-  lcd.drawText(105,8,"ARSPD_FBW_MIN:", 0)
-  lcd.drawText(lcd.getLastPos()+2,8, exportTECS('ARSPD_FBW_MIN') ,0)
+  lcd.drawText(105,8,"AIRSPEED_MIN:", 0)
+  lcd.drawText(lcd.getLastPos()+2,8, exportTECS('AIRSPEED_MIN') ,0)
   lcd.drawText(105,16,"TECS_PITCH_MAX:", 0)
   lcd.drawText(lcd.getLastPos()+2,16, exportTECS('TECS_PITCH_MAX') ,0)
 --5
