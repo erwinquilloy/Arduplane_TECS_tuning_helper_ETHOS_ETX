@@ -1,4 +1,4 @@
--- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.3.0
+-- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.3.1
 -- Ethos port of the OpenTX/EdgeTX "Arduplane TECS tuning helper" widget.
 --
 -- This program is free software; you can redistribute it and/or modify
@@ -110,7 +110,6 @@ end
 -- UNIT CONVERSIONS (raw telemetry -> Arduplane parameter units)
 -- ================================================================
 local function dmsToMs(dm)   return dm * 0.1  end          -- dm/s -> m/s
-local function dmsToCms(dm)  return dm * 10   end          -- dm/s -> cm/s
 local function dmsToKph(dm)  return dm * 0.36 end          -- dm/s -> km/h
 local function clampMs(dm)   return math.min(math.abs(0.1 * dm), 10) end -- dm/s -> +m/s (<=10)
 
@@ -118,15 +117,18 @@ local function clampMs(dm)   return math.min(math.abs(0.1 * dm), 10) end -- dm/s
 -- TECS PARAMETERS
 -- value = captured raw value, exporter = raw -> Arduplane unit
 -- ================================================================
+-- NOTE: names/units target ArduPlane 4.5+ (verified against 4.6.3). The airspeed
+-- params were renamed from ARSPD_FBW_MIN/MAX and TRIM_ARSPD_CM, and AIRSPEED_CRUISE
+-- is now m/s (was cm/s), so its exporter converts dm/s -> m/s, not dm/s -> cm/s.
 local TECS = {
   TRIM_THROTTLE   = { value = 0,  exporter = function(v) return v end },                 -- percent
-  TRIM_ARSPD_CM   = { value = 0,  exporter = function(v) return dmsToCms(v) end },        -- dm/s -> cm/s
+  AIRSPEED_CRUISE = { value = 0,  exporter = function(v) return dmsToMs(v) end },         -- dm/s -> m/s
   THR_MAX         = { value = 0,  exporter = function(v) return v end },                  -- percent
-  ARSPD_FBW_MAX   = { value = 0,  exporter = function(v) return dmsToMs(v * 0.95) end },  -- dm/s -> m/s * 0.95
+  AIRSPEED_MAX    = { value = 0,  exporter = function(v) return dmsToMs(v * 0.95) end },  -- dm/s -> m/s * 0.95
   TECS_PITCH_MAX  = { value = -4, exporter = function(v) return math.abs(v + 4) end },    -- +deg  (-4 margin)
   TECS_CLMB_MAX   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- +m/s
   FBWB_CLIMB_RATE = { value = 0,  exporter = function(v) return clampMs(v) end },         -- m/s
-  ARSPD_FBW_MIN   = { value = 0,  exporter = function(v) return dmsToMs(v) end },         -- m/s
+  AIRSPEED_MIN    = { value = 0,  exporter = function(v) return dmsToMs(v) end },         -- m/s
   STAB_PITCH_DOWN = { value = 0,  exporter = function(v) return math.abs(v) end },        -- deg
   TECS_SINK_MIN   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- m/s
   TECS_PITCH_MIN  = { value = 4,  exporter = function(v) return v - 4 end },              -- -deg  (+4 margin)
@@ -136,8 +138,8 @@ local TECS = {
 
 -- ordered list for display / logging
 local TECS_ORDER = {
-  "TRIM_THROTTLE", "TRIM_ARSPD_CM", "THR_MAX", "ARSPD_FBW_MAX",
-  "TECS_PITCH_MAX", "TECS_CLMB_MAX", "FBWB_CLIMB_RATE", "ARSPD_FBW_MIN",
+  "TRIM_THROTTLE", "AIRSPEED_CRUISE", "THR_MAX", "AIRSPEED_MAX",
+  "TECS_PITCH_MAX", "TECS_CLMB_MAX", "FBWB_CLIMB_RATE", "AIRSPEED_MIN",
   "STAB_PITCH_DOWN", "TECS_SINK_MIN", "TECS_PITCH_MIN", "TECS_SINK_MAX",
   "KFF_THR2PTCH",
 }
@@ -179,30 +181,30 @@ local stepDef = {
     audio = function() playFile("tecs10.wav") end,
     fn = function(widget)
       TECS.TRIM_THROTTLE.value = getThrottlePct(widget)
-      TECS.TRIM_ARSPD_CM.value = capArspd()
+      TECS.AIRSPEED_CRUISE.value = capArspd()
     end,
   },
   [2] = {
     text = "Now accelerate to your desired maximum cruise speed.",
     audio = function()
       playFile("tecs11.wav")
-      system.playNumber(dmsToKph(TECS.TRIM_ARSPD_CM.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_CRUISE.value), UNIT_KPH, 0)
       playFile("tecs20.wav")
     end,
     fn = function(widget)
       TECS.THR_MAX.value       = getThrottlePct(widget)
-      TECS.ARSPD_FBW_MAX.value = capArspd()
+      TECS.AIRSPEED_MAX.value = capArspd()
     end,
   },
   [3] = {
     text = "Keep the throttle and start climbing until airspeed reaches cruise speed.",
     audio = function()
       playFile("tecs21.wav")
-      system.playNumber(dmsToKph(TECS.ARSPD_FBW_MAX.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_MAX.value), UNIT_KPH, 0)
       playFile("tecs30.wav")
       system.playNumber(TECS.THR_MAX.value, UNIT_PERCENT, 0)
       playFile("tecs31.wav")
-      system.playNumber(dmsToKph(TECS.TRIM_ARSPD_CM.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_CRUISE.value), UNIT_KPH, 0)
     end,
     fn = function(widget)
       TECS.TECS_PITCH_MAX.value  = telemetry.pitch
@@ -218,16 +220,16 @@ local stepDef = {
       playFile("tecs40.wav")
     end,
     fn = function(widget)
-      TECS.ARSPD_FBW_MIN.value = capArspd()
+      TECS.AIRSPEED_MIN.value = capArspd()
     end,
   },
   [5] = {
     text = "Gain altitude, then cut throttle and pitch down until airspeed reaches min speed.",
     audio = function()
       playFile("tecs41.wav")
-      system.playNumber(dmsToKph(TECS.ARSPD_FBW_MIN.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_MIN.value), UNIT_KPH, 0)
       playFile("tecs50.wav")
-      system.playNumber(dmsToKph(TECS.ARSPD_FBW_MIN.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_MIN.value), UNIT_KPH, 0)
     end,
     fn = function(widget)
       TECS.STAB_PITCH_DOWN.value = telemetry.pitch
@@ -240,7 +242,7 @@ local stepDef = {
       playFile("tecs51.wav")
       system.playNumber(clampMs(TECS.TECS_SINK_MIN.value), UNIT_METER_PER_SECOND, 0)
       playFile("tecs60.wav")
-      system.playNumber(dmsToKph(TECS.ARSPD_FBW_MAX.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_MAX.value), UNIT_KPH, 0)
     end,
     fn = function(widget)
       TECS.TECS_PITCH_MIN.value = telemetry.pitch

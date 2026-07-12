@@ -21,3 +21,9 @@
                         native 5.4 bitwise ops, system.registerWidget/playFile/playNumber,
                         storage persistence). CRSF passthrough only. Adaptive layout via
                         lcd.getWindowSize(). Trigger + optional throttle configurable as sources.
+* v0.3.1    12.07.2026  Ethos: update to ArduPlane 4.5+ parameter names (verified vs 4.6.3):
+                        TRIM_ARSPD_CM -> AIRSPEED_CRUISE, ARSPD_FBW_MIN -> AIRSPEED_MIN,
+                        ARSPD_FBW_MAX -> AIRSPEED_MAX. AIRSPEED_CRUISE is now m/s (was cm/s)
+                        so its exporter converts dm/s -> m/s (fixes a 100x unit error).
+                        TECS_*/THR_MAX/TRIM_THROTTLE/FBWB_CLIMB_RATE/STAB_PITCH_DOWN/KFF_THR2PTCH
+                        unchanged.
