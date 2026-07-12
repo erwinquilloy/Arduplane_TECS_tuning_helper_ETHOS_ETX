@@ -334,6 +334,16 @@ local function processTelemetry(DATA_ID, VALUE,now)
       end
       return nil, nil ,nil ,nil
   end
+
+  -- SPort passthrough pop (FrSky ACCST/ACCESS links: R9, X/S-series Rx, F.Port).
+  -- ArduPilot's "FrSky SPort passthrough" sends the SAME 0x50xx app-ids as CRSF
+  -- passthrough, and sportTelemetryPop() already returns physId, primId, appId,
+  -- value in the order the background loop expects (it acts on primId == 0x10).
+  -- Requires SERIALx_PROTOCOL = 10 (Frsky SPort passthrough) on the aircraft and
+  -- the sensors discovered once in the radio's telemetry page.
+  local function sportPop()
+      return sportTelemetryPop()
+  end
 --< Y
 
 -------- from tecs.lua
@@ -490,7 +500,17 @@ local options = {
 	{"BackColor", COLOR, BLACK },
 	{"ForeColor", COLOR, WHITE },
 	{"Switch", SOURCE, 117 },
+	{"UseCRSF", BOOL, 1 },   -- 1 = CRSF passthrough (Crossfire/ELRS), 0 = FrSky SPort passthrough (R9 / X-S-series / F.Port)
 }
+
+-- pick the telemetry transport from the widget's "UseCRSF" checkbox
+local function selectTelemetry(options)
+	if options.UseCRSF == 0 then
+		telemetryPop = sportPop
+	else
+		telemetryPop = crossfirePop
+	end
+end
 
 local function exportTECS(param)
 	local exportValue = nil
@@ -576,9 +596,7 @@ end
 
 
 local function create(zone, options)
-	if conf.enableCRSF == true then
-		telemetryPop = crossfirePop
-	end
+	selectTelemetry(options)
 
 	noTelemetryData =  3
 	step = 1
@@ -590,6 +608,7 @@ end
 
 local function update(wgt, newOptions)
     wgt.options = newOptions
+    selectTelemetry(newOptions)
 end
 
 local function background(wgt)

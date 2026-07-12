@@ -347,6 +347,16 @@ local function processTelemetry(DATA_ID, VALUE,now)
       end
       return nil, nil ,nil ,nil
   end
+
+  -- SPort passthrough pop (FrSky ACCST/ACCESS links: R9, X/S-series Rx, F.Port).
+  -- ArduPilot's "FrSky SPort passthrough" sends the SAME 0x50xx app-ids as CRSF
+  -- passthrough, and sportTelemetryPop() already returns physId, primId, appId,
+  -- value in the order backgroundLT expects (it acts on frame_id == 0x10).
+  -- Requires SERIALx_PROTOCOL = 10 (Frsky SPort passthrough) on the aircraft and
+  -- the sensors discovered once in the radio's telemetry page.
+  local function sportPop()
+      return sportTelemetryPop()
+  end
 --< Y
 
 
@@ -354,8 +364,10 @@ local function initLTT()
 	
   if conf.enableCRSF == true then
     telemetryPop = crossfirePop
+  else
+    telemetryPop = sportPop
   end
-	
+
 end
  
 

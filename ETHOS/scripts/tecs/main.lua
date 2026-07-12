@@ -107,6 +107,46 @@ local function crossfirePop()
 end
 
 -- ================================================================
+-- FrSky SPort passthrough (R9 / X-S-series / F.Port)  -- UNTESTED on hardware
+-- ================================================================
+-- Ethos has no sportTelemetryPop(); instead ArduPilot's passthrough app-ids are
+-- discovered as DIY telemetry sensors. We read each sensor's raw 32-bit value and
+-- feed it to the SAME processTelemetry() the CRSF path uses. Requires:
+--   * aircraft serial SERIALx_PROTOCOL = 10 (Frsky SPort passthrough), BAUD 57
+--   * the 0x50xx sensors discovered once on the radio's telemetry page
+-- NOTE: this relies on Ethos returning the raw uint32 payload for these DIY
+-- sensors (masked to 32 bits below). Confirm on a bench with an R9 + FC before
+-- trusting the numbers.
+local SPORT_APPIDS = { 0x5006, 0x5005, 0x50F2 }  -- same ids processTelemetry() decodes
+local sportSources = nil   -- lazily-resolved { appId -> source }, nil until first poll
+local sportLast    = {}    -- { appId -> last raw value } for change detection
+
+local function sportPoll()
+  if sportSources == nil then sportSources = {} end
+  local got = false
+  for _, appId in ipairs(SPORT_APPIDS) do
+    local src = sportSources[appId]
+    if src == nil then
+      -- not resolved yet (or sensor not discovered): try again this poll
+      src = system.getSource({ appId = appId })
+      sportSources[appId] = src
+    end
+    if src ~= nil then
+      local value = src:value()
+      if value ~= nil then
+        local raw = math.floor(value) & 0xFFFFFFFF   -- integer, masked to 32 bits
+        processTelemetry(appId, raw)                 -- refresh even if unchanged
+        if raw ~= sportLast[appId] then              -- but only "live" counts as new data
+          sportLast[appId] = raw
+          got = true
+        end
+      end
+    end
+  end
+  return got
+end
+
+-- ================================================================
 -- UNIT CONVERSIONS (raw telemetry -> Arduplane parameter units)
 -- ================================================================
 local function dmsToMs(dm)   return dm * 0.1  end          -- dm/s -> m/s
@@ -333,6 +373,7 @@ local function create()
     throttleSource = nil,
     backColor      = lcd.RGB(0, 0, 0),
     foreColor      = lcd.RGB(255, 255, 255),
+    useSport       = false,   -- false = CRSF frames (Crossfire/ELRS), true = FrSky SPort sensors (R9)
     -- runtime state
     step           = 1,
     lastTrigger    = 0,
@@ -341,11 +382,16 @@ local function create()
 end
 
 local function wakeup(widget)
-  -- drain any waiting CRSF frames (this replaces the OpenTX background())
   local got = false
-  for _ = 1, 20 do
-    if not crossfirePop() then break end
-    got = true
+  if widget.useSport then
+    -- FrSky SPort: poll discovered passthrough sensors (R9 / X-S-series / F.Port)
+    got = sportPoll()
+  else
+    -- drain any waiting CRSF frames (this replaces the OpenTX background())
+    for _ = 1, 20 do
+      if not crossfirePop() then break end
+      got = true
+    end
   end
   if got then
     lastTelemetry = os.clock()
@@ -433,6 +479,12 @@ local function configure(widget)
   form.addSourceField(line, nil,
     function() return widget.throttleSource end,
     function(v) widget.throttleSource = v end)
+
+  -- OFF = CRSF passthrough (Crossfire/ELRS); ON = FrSky SPort passthrough (R9 etc.)
+  line = form.addLine("FrSky SPort link (R9)")
+  form.addBooleanField(line,
+    function() return widget.useSport end,
+    function(v) widget.useSport = v end)
 end
 
 -- ================================================================
@@ -441,11 +493,13 @@ end
 local function read(widget)
   widget.switchSource   = storage.read("switchSource")
   widget.throttleSource = storage.read("throttleSource")
+  widget.useSport       = storage.read("useSport") or false
 end
 
 local function write(widget)
   storage.write("switchSource", widget.switchSource)
   storage.write("throttleSource", widget.throttleSource)
+  storage.write("useSport", widget.useSport)
 end
 
 -- ================================================================

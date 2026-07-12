@@ -30,7 +30,9 @@ Each step is triggered by the configured switch and will update your TECS, which
 The process can not be paused or aborted but repeated as many times as needed.
 
 ### Summary
-* CRSF protocol only as of today (crossfire & ELRS)
+* CRSF passthrough (Crossfire & ELRS) **and** FrSky SPort passthrough
+  (R9, X/S-series receivers, F.Port). SPort is fully wired on EdgeTX/OpenTX; the
+  Ethos widget has a SPort toggle too but it is **untested on hardware**
 * read airplane telemetry
 * step-by-step instructions for tuning the TECS
 * single switch operation
@@ -70,6 +72,9 @@ same Lua widget API — no separate build is needed for either revision).
 ![](_img/horus_setup.png)
 * [optionally] enter "widget settings" and choose your switch to initiate the next step. Default is SH
 ![](_img/horus_settings.png)
+* in "widget settings" set **UseCRSF**: leave it **ON** for Crossfire/ELRS links,
+  or turn it **OFF** for FrSky SPort links (R9, X/S-series receivers, F.Port).
+  See [Telemetry link type](#telemetry-link-type-crsf-vs-frsky-sport) below.
 
 * reboot your radio to flush the widget cache
 * telemetry values on the left should change when moving your aircraft
@@ -87,6 +92,41 @@ same Lua widget API — no separate build is needed for either revision).
 ![](_img/special_functions.png)
 * open your telemetry screen and validate that Pitch and Roll updating accordingly to aircraft movement
 ![](_img/telemetry_screen_empty.png)
+
+> **FrSky SPort link (R9 etc.):** this telemetry-script version has no settings
+> menu, so open `SCRIPTS/TELEMETRY/tecsX9.lua` and set `enableCRSF = false` in the
+> `conf` table near the top before copying it to the SD-card. See below.
+
+### Telemetry link type (CRSF vs FrSky SPort)
+
+The widget/script only cares about how ArduPilot's **passthrough** telemetry
+reaches the radio, not the RF brand. The same `0x50xx` passthrough app-ids are
+carried by both transports, so both work:
+
+| Link | Examples | Radio transport |
+|------|----------|-----------------|
+| **CRSF passthrough** | TBS Crossfire, ELRS | `crossfireTelemetryPop()` |
+| **FrSky SPort passthrough** | **FrSky R9**, X/S-series Rx, F.Port | `sportTelemetryPop()` |
+
+**Aircraft side (ArduPilot):**
+* CRSF: serial port set to `SERIALx_PROTOCOL = 23` (RCIN/CRSF) with passthrough, as before.
+* FrSky SPort: set the port wired to the receiver's **SmartPort** pad to
+  `SERIALx_PROTOCOL = 10` (FrSky SPort passthrough), `SERIALx_BAUD = 57`. R9 /
+  X-series SmartPort is inverted — use the flight-controller's inverted SPort pad
+  (or an uninverted F.Port pad). Then **Discover new sensors** once on the radio's
+  telemetry page so the `0x50xx` sensors appear.
+
+**Radio side:**
+* **EdgeTX color widget** (`WIDGETS/TECS/main.lua`): toggle **UseCRSF** in the
+  widget settings — **ON** = CRSF, **OFF** = FrSky SPort.
+* **X9D/Q7 telemetry script** (`SCRIPTS/TELEMETRY/tecsX9.lua`): edit
+  `enableCRSF = true` → `false` in the `conf` table (no in-app menu).
+* **Ethos** (X20S/X18…): long-press the widget → **Configure** → turn on
+  **"FrSky SPort link (R9)"**. Ethos has no raw SPort frame API, so this path
+  instead reads the discovered `0x50xx` passthrough **sensors** (make sure they
+  show up under **Discover new sensors** first). **This Ethos SPort path is
+  untested on hardware** — verify Pitch/Roll track the airframe before relying
+  on it, and please report back if it works.
 
 ### Operation
 
