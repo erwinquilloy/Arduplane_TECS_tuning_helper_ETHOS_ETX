@@ -30,6 +30,27 @@ The process can not be paused or aborted but repeated as many times as needed.
 * show TECS parameter in Arduplane format and unit on screen
 * write logfiles to /LOGS/tecs_\<timestamp\>.txt
 
+### Installation Ethos (X20S / X20 / X18 / X18S / Twin ...)
+The Ethos version is a single self-contained widget that adapts to the radio's
+screen size (verified layout logic for both 800x480 and 480x320/272 displays).
+It reads ArduPilot **CRSF passthrough** telemetry (Crossfire & ELRS), same as the
+OpenTX version.
+
+* copy the whole `ETHOS/scripts/tecs/` folder to your SD-card `/scripts/tecs/`
+* choose a voice and extract the `tecs*.wav` files from `SOUNDS/<voice>.zip`
+  into `/scripts/tecs/audio/en/` (see `PLACE_WAVS_HERE.txt` there)
+* reboot the radio, then add a screen/widget and pick **"TECS Tuning"**
+  as a full-screen widget
+* long-press the widget → **Configure**:
+    * **Trigger switch** – the switch (momentary recommended) that advances the steps
+    * **Throttle source** – *(optional)* your throttle stick/channel; if left empty the
+      widget uses the throttle value reported by ArduPilot's VFR telemetry
+* open the screen and confirm Pitch/Roll update when you move the aircraft
+
+Requirements on the aircraft side are identical to the OpenTX version
+(ArduPilot frsky passthrough over CRSF). Logfiles are written to
+`/scripts/tecs/tecs_<timestamp>.txt`.
+
 ### Installation Horus
 * copy `WIDGETS/TECS/main.lua` to your SD card
 * Choose your prefered voice and copy the custom sounds from `SOUNDS/\<voice-of-your-choice\>.zip` to your SD-card `/SOUNDS/en/`

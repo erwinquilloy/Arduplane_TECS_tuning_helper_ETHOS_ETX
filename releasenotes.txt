@@ -16,3 +16,8 @@
 * v0.2.2	06.05.2022	porting fixes for EdgeTX, adding X7 telemetry screen with reduced parameter names
 						fix screen error if special function is not set up
 * v0.2.3    19.03.2023  correcting formular for KFF_THR2ATPTCH
+* v0.3.0    12.07.2026  FrSky Ethos port (X20S / X18 / X18S ...) as a single self-contained
+                        widget under ETHOS/scripts/tecs/. Uses the Ethos API (crsf.popFrame,
+                        native 5.4 bitwise ops, system.registerWidget/playFile/playNumber,
+                        storage persistence). CRSF passthrough only. Adaptive layout via
+                        lcd.getWindowSize(). Trigger + optional throttle configurable as sources.

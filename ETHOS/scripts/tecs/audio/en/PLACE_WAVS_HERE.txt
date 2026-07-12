@@ -1,0 +1,14 @@
+Copy the custom TECS voice files into THIS folder.
+
+The widget plays them from /scripts/tecs/audio/en/ with system.playFile().
+Extract the .wav files from one of the voice packs in the repo /SOUNDS/ folder
+(Amber.zip, Aria.zip, Christopher.zip, Cora.zip, Michelle.zip, ...) and drop the
+tecs*.wav files here.
+
+Files used by the widget:
+  tecs10.wav  tecs11.wav  tecs20.wav  tecs21.wav  tecs30.wav  tecs31.wav
+  tecs32.wav  tecs40.wav  tecs41.wav  tecs50.wav  tecs51.wav  tecs60.wav
+  tecs61.wav  tecs70.wav  tecsf.wav
+
+Numbers and units (km/h, m/s, %) are spoken with the radio's built-in
+system.playNumber(), so only the tecs*.wav prompts above are required here.
