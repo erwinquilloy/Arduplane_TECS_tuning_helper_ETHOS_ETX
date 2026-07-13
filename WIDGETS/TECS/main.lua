@@ -1,4 +1,4 @@
--- tecs tuning advisor v0.2.4
+-- tecs tuning advisor v0.2.5
 
 -- This program is free software; you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by
@@ -706,7 +706,18 @@ local function refresh(wgt)
 --7
 	y=240
 	lcd.drawText(x,		y,"KFF_THR2PTCH:", CUSTOM_COLOR)
-	lcd.drawText(x+x_offset,	y, exportTECS('KFF_THR2PTCH') , CUSTOM_COLOR)	
+	lcd.drawText(x+x_offset,	y, exportTECS('KFF_THR2PTCH') , CUSTOM_COLOR)
+
+	-- current instruction caption (bottom, small) -- mirrors the Ethos widget
+	local instruction
+	if step == 1 then
+		instruction = "engage the trigger switch to start"
+	elseif stepDef["step"..(step-1)] ~= nil then
+		instruction = stepDef["step"..(step-1)].text()
+	else
+		instruction = ""
+	end
+	lcd.drawText(1, 255, instruction, CUSTOM_COLOR + SMLSIZE)
 
 end
 

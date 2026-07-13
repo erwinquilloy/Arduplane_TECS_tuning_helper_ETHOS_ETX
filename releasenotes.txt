@@ -31,3 +31,7 @@
                         parameter rename as v0.3.1. AIRSPEED_CRUISE exporter now DMS_to_MS
                         (dm/s -> m/s), fixing the 100x cm/s error. Applies to WIDGETS/TECS/main.lua,
                         SCRIPTS/FUNCTIONS/tecs.lua and SCRIPTS/TELEMETRY/tecsX9.lua.
+* v0.2.5    13.07.2026  EdgeTX color widget (WIDGETS/TECS/main.lua): draw the current step
+                        instruction as a caption at the bottom of the screen, mirroring the
+                        Ethos build. Gives a visual fallback for the step callouts, which are
+                        hard to hear on the TX16S speaker.
