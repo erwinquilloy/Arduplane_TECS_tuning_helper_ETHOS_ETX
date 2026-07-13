@@ -168,8 +168,71 @@ parentheses.
 	*  engage the switch again to save the values
 	*  repeat
 *  Once finished your TECS screen should be filled with numbers
-*  a logfile will be written to /LOGS/tecs_\<timestamp\>.txt
-*  Use MissionPlanner, QGroundControl or [Parachute](https://gitlab.com/stavros/parachute) to update your configuration
+*  a logfile is written to your radio's SD card:
+	*  **EdgeTX** (TX16S etc.): `/LOGS/tecs_<timestamp>.txt`
+	*  **Ethos** (X20S etc.): `/scripts/tecs/tecs_<timestamp>.txt`
+
+### Post-tuning — applying the values
+
+The script **only measures and records** the values — it does **not** talk to the
+aircraft. Nothing on the plane changes until *you* write the parameters with a
+ground station. Do this on the bench after you've landed, not in the air.
+
+#### 1. Land and recover the log
+
+Land the plane and disarm before you start. The values live in two places:
+
+* on the **TECS telemetry screen** (stays filled until the script is reloaded or the radio is restarted), and
+* in the **log file** written when the sequence finishes:
+	* **EdgeTX** (TX16S etc.): `/LOGS/tecs_<timestamp>.txt`
+	* **Ethos** (X20S etc.): `/scripts/tecs/tecs_<timestamp>.txt`
+
+The log file is plain text, one parameter per line as `NAME=value`, e.g.:
+
+```
+TRIM_THROTTLE=38
+AIRSPEED_CRUISE=18
+THR_MAX=80
+...
+debug_TRIM_THROTTLE=38   <- raw captured value, for troubleshooting only
+```
+
+Ignore the `debug_*` lines when applying — the plain `NAME=value` lines are the
+ones you set. On Ethos, if `os.date` isn't available on your build the
+`<timestamp>` is a plain counter number instead of a date, so sort by
+modified-time to find the newest file.
+
+#### 2. Get the log file to your computer
+
+* Connect the radio in **USB storage / drive mode** (EdgeTX: *SYS → hold → USB*; Ethos: *plug in and choose the storage option*), **or** pull the SD card and read it directly.
+* Copy the newest `tecs_<timestamp>.txt` to your PC.
+
+#### 3. Write the parameters — pick one
+
+1. **Type them in by hand.** Open *Config → Full Parameter List* in MissionPlanner (or the equivalent in QGroundControl / [Parachute](https://gitlab.com/stavros/parachute)), find each parameter below, enter the value from the screen or log, then **Write Params**. Fine if you only have a handful.
+2. **Merge the log in Mission Planner (recommended).** In *Config → Full Parameter List* use **Load from file** (or **Compare Params**) and point it at `tecs_<timestamp>.txt`. Review the diff it shows, then **Write Params**. Fastest and least error-prone for the full set. *(The file's `NAME=value` layout matches the param format; if your MP version is strict about it, paste the values into the matching rows manually.)*
+3. **Copy from the screen.** No computer? Read the values straight off the TECS telemetry screen and enter them in your ground station over a telemetry/Bluetooth link.
+
+The parameters this tool sets (13 total):
+
+| Group | Parameters |
+|---|---|
+| Throttle / speed | `TRIM_THROTTLE`, `THR_MAX`, `AIRSPEED_CRUISE`, `AIRSPEED_MIN`, `AIRSPEED_MAX` |
+| Climb | `TECS_PITCH_MAX`, `TECS_CLMB_MAX`, `FBWB_CLIMB_RATE` |
+| Sink / descent | `TECS_PITCH_MIN`, `TECS_SINK_MIN`, `TECS_SINK_MAX`, `STAB_PITCH_DOWN` |
+| Feed-forward | `KFF_THR2PTCH` |
+
+#### 4. Review, write, and verify
+
+* **Compare against the originals you noted before tuning** (see the prep section). The pitch/climb/sink limits especially change how the airframe flies — sanity-check anything that looks extreme.
+* **Write Params**, then **refresh/read them back** to confirm they stuck.
+* Reboot the flight controller if your ground station recommends it for the changed params.
+* Test conservatively on the next flight — keep altitude and be ready to switch back to a manual mode.
+
+> Re-running the sequence overwrites the on-screen values in place; it does **not**
+> reset them. A partial re-run therefore leaves earlier parameters at their
+> previous readings, and the next log file will contain that mix — finish a full
+> run before trusting a log.
 
 
 ### detailed Process
