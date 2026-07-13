@@ -128,6 +128,33 @@ carried by both transports, so both work:
   untested on hardware** — verify Pitch/Roll track the airframe before relying
   on it, and please report back if it works.
 
+### Preparation (before you tune)
+
+Adapted from Stavros' [Tuning the TECS](https://notes.stavros.io/ardupilot/tuning-the-tecs/)
+notes — do these **before** the tuning flights so your measurements are
+accurate. Parameter names are ArduPlane 4.5+; older names are noted in
+parentheses.
+
+* **Finish a successful autotune first.** TECS tuning assumes the roll/pitch
+  controllers are already tuned.
+* **Un-clamp the pitch limits** so they don't constrain the aircraft while you
+  measure climb and descent:
+    * `PTCH_LIM_MAX_DEG = 45`
+    * `PTCH_LIM_MIN_DEG = -45`
+    * *(ArduPlane ≤4.4 called these `LIM_PITCH_MAX = 4500` /
+      `LIM_PITCH_MIN = -4500`, in centidegrees.)*
+* **Get a raw (non-remapped) throttle reading** while measuring: set
+  `THR_PASS_STAB = 1`.
+* **Enable throttle battery-voltage compensation** so a partly-drained pack
+  doesn't make the motor — and therefore your measurements — run slow:
+    * `FWD_BAT_VOLT_MAX = 4.2 * cells` (Li-Ion or LiPo)
+    * `FWD_BAT_VOLT_MIN = 3.0 * cells` (Li-Ion) or `3.5 * cells` (LiPo)
+* **Have pitch and airspeed visible.** This widget already shows both on the
+  telemetry screen; adding them to your OSD helps you cross-check in the air.
+
+> Several of these (the pitch limits especially) change how the airframe flies.
+> Note your original values first so you can restore them once tuning is done.
+
 ### Operation
 
 **! You are 100% of the time in control and responsible for your plane !**
