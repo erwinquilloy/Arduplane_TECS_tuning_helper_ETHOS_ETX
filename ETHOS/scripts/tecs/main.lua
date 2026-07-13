@@ -404,6 +404,25 @@ local function wakeup(widget)
   lcd.invalidate()
 end
 
+-- greedily word-wraps `text` to fit `maxW` at the *current* font.
+-- returns a list of lines (never empty for non-empty input).
+local function wrapText(text, maxW)
+  local lines = {}
+  local line = ""
+  for word in string.gmatch(text, "%S+") do
+    local try = (line == "") and word or (line .. " " .. word)
+    local tw = lcd.getTextSize(try)
+    if tw > maxW and line ~= "" then
+      lines[#lines + 1] = line
+      line = word
+    else
+      line = try
+    end
+  end
+  if line ~= "" then lines[#lines + 1] = line end
+  return lines
+end
+
 local function paint(widget)
   local w, h = lcd.getWindowSize()
 
@@ -454,15 +473,32 @@ local function paint(widget)
     py = py + row
   end
 
-  -- --- current instruction (bottom, centered) ---
-  lcd.font(FONT_XS)
+  -- --- current instruction (bottom, centered, wrapped) ---
+  -- FONT_S is taller/wider than the old FONT_XS, so a long caption won't fit
+  -- on one line (especially on narrow X18/X18S screens). Wrap it and stack the
+  -- lines upward from the bottom edge so nothing gets clipped off-screen.
   local instruction
   if widget.step == 1 then
     instruction = "engage the trigger switch to start"
   else
     instruction = stepDef[widget.step - 1].text
   end
-  lcd.drawText(math.floor(w / 2), h - row, instruction, CENTERED)
+  -- pick the largest font the screen can carry: bigger on wide radios
+  -- (X20S ~784px), a step down on narrow ones (X18/X18S ~ up to ~300px widget).
+  local capFont = FONT_XS
+  if w >= 700 then
+    capFont = FONT_STD
+  elseif w >= 400 then
+    capFont = FONT_S
+  end
+  lcd.font(capFont)
+  local _, lineH = lcd.getTextSize(instruction)
+  local lines = wrapText(instruction, w - 8)
+  local iy = h - (#lines * lineH)
+  for i = 1, #lines do
+    lcd.drawText(math.floor(w / 2), iy, lines[i], CENTERED)
+    iy = iy + lineH
+  end
 end
 
 -- ================================================================
