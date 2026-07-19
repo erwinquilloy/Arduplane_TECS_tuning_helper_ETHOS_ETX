@@ -525,7 +525,15 @@ local function exportTECS(param)
 	 else
 		return 0
 	 end
-	 
+
+end
+
+-- km/h equivalent of an airspeed param, from its raw dm/s value, so it can be
+-- shown in parentheses beside the m/s value and cross-checked against a km/h OSD.
+local function exportKPH(param)
+	local v = TECS[param].value
+	if param == 'AIRSPEED_MAX' then v = v * 0.95 end	-- match the m/s exporter's 0.95 factor
+	return DMs_to_KPH(v)
 end
 
 
@@ -672,11 +680,11 @@ local function refresh(wgt)
 	lcd.drawText(x		,y,"TRIM_THROTTLE:", CUSTOM_COLOR)
 	lcd.drawText(x+x_offset	,y, exportTECS('TRIM_THROTTLE') , CUSTOM_COLOR)
 	lcd.drawText(x		,y+20,"AIRSPEED_CRUISE:", CUSTOM_COLOR)
-	lcd.drawText(x+x_offset	,y+20, exportTECS('AIRSPEED_CRUISE') , CUSTOM_COLOR)
+	lcd.drawText(x+x_offset	,y+20, exportTECS('AIRSPEED_CRUISE') .. " (" .. exportKPH('AIRSPEED_CRUISE') .. "kph)" , CUSTOM_COLOR)
 --2
 	y=40
 	lcd.drawText(x		,y,"AIRSPEED_MAX:", CUSTOM_COLOR)
-	lcd.drawText(x+x_offset	,y, exportTECS('AIRSPEED_MAX') , CUSTOM_COLOR)
+	lcd.drawText(x+x_offset	,y, exportTECS('AIRSPEED_MAX') .. " (" .. exportKPH('AIRSPEED_MAX') .. "kph)" , CUSTOM_COLOR)
 	lcd.drawText(x		,y+20,"THR_MAX:", CUSTOM_COLOR)
 	lcd.drawText(x+x_offset	,y+20, exportTECS('THR_MAX') , CUSTOM_COLOR)
 --3
@@ -688,7 +696,7 @@ local function refresh(wgt)
 --4
 	y=120
 	lcd.drawText(x,		y,"AIRSPEED_MIN:", CUSTOM_COLOR)
-	lcd.drawText(x+x_offset,	y, exportTECS('AIRSPEED_MIN') , CUSTOM_COLOR)
+	lcd.drawText(x+x_offset,	y, exportTECS('AIRSPEED_MIN') .. " (" .. exportKPH('AIRSPEED_MIN') .. "kph)" , CUSTOM_COLOR)
 	lcd.drawText(x,		y+20,"TECS_PITCH_MAX:", CUSTOM_COLOR)
 	lcd.drawText(x+x_offset,	y+20, exportTECS('TECS_PITCH_MAX') , CUSTOM_COLOR)
 --5

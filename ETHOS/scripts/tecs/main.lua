@@ -198,6 +198,23 @@ local function fmt(v)
   return string.format("%.1f", v)
 end
 
+-- airspeed params are exported in m/s; we also show the km/h equivalent in
+-- parentheses so the value can be cross-checked against a km/h OSD.
+local SPEED_PARAMS = {
+  AIRSPEED_CRUISE = true,
+  AIRSPEED_MAX    = true,
+  AIRSPEED_MIN    = true,
+}
+
+-- formats an exported param for display; airspeeds get a "(NN kph)" suffix
+local function fmtParam(name)
+  local v = exportTECS(name)
+  if SPEED_PARAMS[name] then
+    return string.format("%s (%skph)", fmt(v), fmt(v * 3.6))
+  end
+  return fmt(v)
+end
+
 -- read throttle as percent: from configured stick source, else from VFR telemetry
 local function getThrottlePct(widget)
   if widget.throttleSource ~= nil then
@@ -469,7 +486,7 @@ local function paint(widget)
   local py = 2
   for _, name in ipairs(TECS_ORDER) do
     lcd.drawText(colX, py, name)
-    lcd.drawText(valX, py, fmt(exportTECS(name)), RIGHT)
+    lcd.drawText(valX, py, fmtParam(name), RIGHT)
     py = py + row
   end
 
