@@ -31,8 +31,8 @@ The process can not be paused or aborted but repeated as many times as needed.
 
 ### Summary
 * CRSF passthrough (Crossfire & ELRS) **and** FrSky SPort passthrough
-  (R9, X/S-series receivers, F.Port). SPort is fully wired on EdgeTX/OpenTX; the
-  Ethos widget has a SPort toggle too but it is **untested on hardware**
+  (R9, X/S-series receivers, F.Port). On EdgeTX/OpenTX pick the transport with
+  the **UseCRSF** setting; the Ethos widget auto-detects both
 * read airplane telemetry
 * step-by-step instructions for tuning the TECS
 * single switch operation
@@ -106,7 +106,7 @@ carried by both transports, so both work:
 | Link | Examples | Radio transport |
 |------|----------|-----------------|
 | **CRSF passthrough** | TBS Crossfire, ELRS | `crossfireTelemetryPop()` |
-| **FrSky SPort passthrough** | **FrSky R9**, X/S-series Rx, F.Port | `sportTelemetryPop()` |
+| **FrSky SPort passthrough** | **FrSky R9**, X/S-series Rx, F.Port | `sportTelemetryPop()` (EdgeTX) / `sport.getSensor():popFrame()` (Ethos) |
 
 **Aircraft side (ArduPilot):**
 * CRSF: serial port set to `SERIALx_PROTOCOL = 23` (RCIN/CRSF) with passthrough, as before.
@@ -121,12 +121,29 @@ carried by both transports, so both work:
   widget settings — **ON** = CRSF, **OFF** = FrSky SPort.
 * **X9D/Q7 telemetry script** (`SCRIPTS/TELEMETRY/tecsX9.lua`): edit
   `enableCRSF = true` → `false` in the `conf` table (no in-app menu).
-* **Ethos** (X20S/X18…): long-press the widget → **Configure** → turn on
-  **"FrSky SPort link (R9)"**. Ethos has no raw SPort frame API, so this path
-  instead reads the discovered `0x50xx` passthrough **sensors** (make sure they
-  show up under **Discover new sensors** first). **This Ethos SPort path is
-  untested on hardware** — verify Pitch/Roll track the airframe before relying
-  on it, and please report back if it works.
+* **Ethos** (X20S/X18…): nothing to set — **Telemetry link** defaults to
+  **Auto**, which drains both transports every cycle, so CRSF and SPort/F.Port
+  models both just work. The **CRSF** / **FrSky SPort** choices only exist to
+  pin one transport while debugging.
+
+  The SPort path pops raw frames with `sport.getSensor{appIdStart=…, appIdEnd=…}`
+  → `:popFrame()`, the same API the Yaapu Ethos script uses. It does **not**
+  depend on the `0x50xx` app-ids being discovered as telemetry sensors — Ethos
+  never creates sensors for that range, so there is nothing to discover and
+  **Discover new sensors** is not needed for the widget to work.
+
+  > Widget versions before v0.4.0 tried to read the passthrough app-ids as
+  > sensors via `system.getSource()`. That could never work; if your values sit
+  > at zero on an R9/F.Port model, update the widget.
+
+  **If the values still stay at 0:** long-press the widget → **Configure** →
+  turn on **Debug telemetry**, which shows the reader status, a count of
+  passthrough frames popped, and every app-id seen with its raw value:
+  * `reader: no sport API` → the Ethos build predates the `sport` module.
+  * `frames: 0` and nothing received → no passthrough is reaching the radio.
+    Check the aircraft serial config; if the Yaapu script shows data on the
+    same model, the link is fine and this is a widget bug worth reporting.
+  * frames rising with `5006` / `5005` / `50F2` listed → decoding is live.
 
 ### Preparation (before you tune)
 

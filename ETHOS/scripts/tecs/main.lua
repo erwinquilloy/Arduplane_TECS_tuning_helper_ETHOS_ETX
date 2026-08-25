@@ -1,4 +1,4 @@
--- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.3.1
+-- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.4.0
 -- Ethos port of the OpenTX/EdgeTX "Arduplane TECS tuning helper" widget.
 --
 -- This program is free software; you can redistribute it and/or modify
@@ -106,44 +106,90 @@ local function crossfirePop()
   return false
 end
 
--- ================================================================
--- FrSky SPort passthrough (R9 / X-S-series / F.Port)  -- UNTESTED on hardware
--- ================================================================
--- Ethos has no sportTelemetryPop(); instead ArduPilot's passthrough app-ids are
--- discovered as DIY telemetry sensors. We read each sensor's raw 32-bit value and
--- feed it to the SAME processTelemetry() the CRSF path uses. Requires:
---   * aircraft serial SERIALx_PROTOCOL = 10 (Frsky SPort passthrough), BAUD 57
---   * the 0x50xx sensors discovered once on the radio's telemetry page
--- NOTE: this relies on Ethos returning the raw uint32 payload for these DIY
--- sensors (masked to 32 bits below). Confirm on a bench with an R9 + FC before
--- trusting the numbers.
-local SPORT_APPIDS = { 0x5006, 0x5005, 0x50F2 }  -- same ids processTelemetry() decodes
-local sportSources = nil   -- lazily-resolved { appId -> source }, nil until first poll
-local sportLast    = {}    -- { appId -> last raw value } for change detection
+-- telemetry link selection (widget.linkMode)
+local LINK_AUTO  = 0   -- drain both transports, whichever is live wins (default)
+local LINK_CRSF  = 1   -- force CRSF frames only (Crossfire / ELRS)
+local LINK_SPORT = 2   -- force FrSky SPort/F.Port frames only (R9 / X-S-series)
 
-local function sportPoll()
-  if sportSources == nil then sportSources = {} end
-  local got = false
-  for _, appId in ipairs(SPORT_APPIDS) do
-    local src = sportSources[appId]
-    if src == nil then
-      -- not resolved yet (or sensor not discovered): try again this poll
-      src = system.getSource({ appId = appId })
-      sportSources[appId] = src
-    end
-    if src ~= nil then
-      local value = src:value()
-      if value ~= nil then
-        local raw = math.floor(value) & 0xFFFFFFFF   -- integer, masked to 32 bits
-        processTelemetry(appId, raw)                 -- refresh even if unchanged
-        if raw ~= sportLast[appId] then              -- but only "live" counts as new data
-          sportLast[appId] = raw
-          got = true
-        end
-      end
+-- ================================================================
+-- FrSky SPort / F.Port passthrough (R9 / X-S-series)
+-- ================================================================
+-- Ethos DOES expose raw SPort frames, via sport.getSensor() -> :popFrame().
+-- (An earlier version of this file polled the discovered 0x50xx DIY sensors
+-- with system.getSource() instead. That never worked: Ethos does not surface
+-- the ArduPilot passthrough app-ids as telemetry sensors at all, so there was
+-- nothing to read. This is the same API the Yaapu Ethos script uses.)
+--
+-- The sensor is a frame reader filtered to an appId range. ArduPilot passthrough
+-- lives in 0x5000-0x50FF, plus GPS lat/lon on the standard 0x0800 -- the same
+-- 0x800..0x51FF window Yaapu asks for. Note the range filter is unreliable on
+-- some Ethos builds (FrSkyRC/ETHOS-Feedback-Community#1268) and hands back
+-- frames outside the window, which is harmless: processTelemetry() ignores any
+-- appId it does not know.
+--
+-- Requires nothing special on the aircraft beyond ArduPilot's normal FrSky
+-- passthrough telemetry: SERIALx_PROTOCOL = 10 (SPort passthrough) on a wired
+-- SmartPort, or SERIALx_PROTOCOL = 23 with half-duplex for F.Port, where
+-- passthrough rides the RC link automatically.
+local SPORT_PRIM_DATA = 0x10   -- SPort DATA_FRAME; polls/requests use other primIds
+local SPORT_APPID_LO  = 0x800
+local SPORT_APPID_HI  = 0x51FF
+
+local sportSensor  = nil    -- frame reader, resolved on first use
+local sportTried   = false  -- so we only attempt to build it once
+local sportFrames  = 0      -- frames popped since start (debug)
+local sportSeen    = {}     -- { "appId" -> last value } for the debug page
+local sportSeenOrder = {}   -- appIds in first-seen order (debug)
+local sportErr     = nil    -- why the sensor could not be built (debug)
+
+-- builds the frame reader. sport.* is missing on very old Ethos builds, and an
+-- error thrown inside wakeup() kills the widget silently, so this is guarded.
+local function sportInit()
+  sportTried = true
+  if sport == nil or sport.getSensor == nil then
+    sportErr = "no sport API"
+    return
+  end
+  local ok, sensor = pcall(sport.getSensor,
+                           { appIdStart = SPORT_APPID_LO, appIdEnd = SPORT_APPID_HI })
+  if not ok or sensor == nil then
+    -- some builds reject the range filter; an unfiltered reader works too
+    ok, sensor = pcall(sport.getSensor)
+    if not ok or sensor == nil then
+      sportErr = "getSensor failed"
+      return
     end
   end
-  return got
+  sportSensor = sensor
+end
+
+-- pops one waiting SPort frame and decodes it. Returns true if a passthrough
+-- data frame was consumed.
+local function sportPop()
+  if sportSensor == nil then
+    if sportTried then return false end
+    sportInit()
+    if sportSensor == nil then return false end
+  end
+
+  local ok, frame = pcall(function() return sportSensor:popFrame() end)
+  if not ok or frame == nil then return false end
+
+  local primId = frame:primId()
+  if primId ~= SPORT_PRIM_DATA then
+    return true   -- a real frame, just not a data frame: keep draining
+  end
+
+  local appId = frame:appId()
+  local value = frame:value() & 0xFFFFFFFF
+
+  sportFrames = sportFrames + 1
+  local key = string.format("%04X", appId)
+  if sportSeen[key] == nil then sportSeenOrder[#sportSeenOrder + 1] = key end
+  sportSeen[key] = value
+
+  processTelemetry(appId, value)
+  return true
 end
 
 -- ================================================================
@@ -390,7 +436,8 @@ local function create()
     throttleSource = nil,
     backColor      = lcd.RGB(0, 0, 0),
     foreColor      = lcd.RGB(255, 255, 255),
-    useSport       = false,   -- false = CRSF frames (Crossfire/ELRS), true = FrSky SPort sensors (R9)
+    linkMode       = LINK_AUTO,  -- which telemetry transport to poll
+    debugTelem     = false,      -- overlay the raw passthrough-frame diagnostics
     -- runtime state
     step           = 1,
     lastTrigger    = 0,
@@ -400,10 +447,20 @@ end
 
 local function wakeup(widget)
   local got = false
-  if widget.useSport then
-    -- FrSky SPort: poll discovered passthrough sensors (R9 / X-S-series / F.Port)
-    got = sportPoll()
-  else
+
+  -- Both transports are drained every wakeup. They are mutually exclusive on a
+  -- given model (an SPort link produces no CRSF frames and vice versa), so
+  -- whichever one is live wins and the widget needs no configuration to match
+  -- the receiver.
+  if widget.linkMode ~= LINK_CRSF then
+    -- FrSky SPort/F.Port: drain waiting passthrough frames (R9 / X-S-series).
+    -- 10 per wakeup matches Yaapu; more than that risks the CPU-usage killer.
+    for _ = 1, 10 do
+      if not sportPop() then break end
+      got = true
+    end
+  end
+  if widget.linkMode ~= LINK_SPORT then
     -- drain any waiting CRSF frames (this replaces the OpenTX background())
     for _ = 1, 20 do
       if not crossfirePop() then break end
@@ -440,6 +497,33 @@ local function wrapText(text, maxW)
   return lines
 end
 
+-- Diagnostic page for the FrSky SPort path. "frames" counts passthrough data
+-- frames actually popped off the link: 0 with a working Yaapu install means the
+-- reader was never built (see the status line), while a rising count with the
+-- three app-ids listed means decoding is live.
+local function paintDebug(widget, w, h)
+  lcd.font(FONT_S)
+  local _, lineH = lcd.getTextSize("0")
+  local row = lineH + 2
+  local y = 2
+
+  lcd.drawText(4, y, "SPORT DEBUG"); y = y + row
+  lcd.drawText(4, y, "reader: " ..
+    (sportSensor ~= nil and "ok" or (sportErr or "not built yet"))); y = y + row
+  lcd.drawText(4, y, string.format("frames: %d", sportFrames)); y = y + row
+
+  y = y + 4
+  lcd.drawText(4, y, "appId = value (last seen):"); y = y + row
+  if #sportSeenOrder == 0 then
+    lcd.drawText(4, y, "(nothing received)"); y = y + row
+  else
+    for _, key in ipairs(sportSeenOrder) do
+      if y > h - row then break end
+      lcd.drawText(4, y, string.format("%s = %08X", key, sportSeen[key])); y = y + row
+    end
+  end
+end
+
 local function paint(widget)
   local w, h = lcd.getWindowSize()
 
@@ -447,6 +531,11 @@ local function paint(widget)
   lcd.color(widget.backColor)
   lcd.drawFilledRectangle(0, 0, w, h)
   lcd.color(widget.foreColor)
+
+  if widget.debugTelem then
+    paintDebug(widget, w, h)
+    return
+  end
 
   -- adaptive geometry: telemetry on the left, TECS params on the right
   local row    = math.max(14, math.floor((h - 24) / 14))
@@ -533,11 +622,18 @@ local function configure(widget)
     function() return widget.throttleSource end,
     function(v) widget.throttleSource = v end)
 
-  -- OFF = CRSF passthrough (Crossfire/ELRS); ON = FrSky SPort passthrough (R9 etc.)
-  line = form.addLine("FrSky SPort link (R9)")
+  -- Auto polls both transports; the forced modes are only needed for debugging.
+  line = form.addLine("Telemetry link")
+  form.addChoiceField(line, nil,
+    { { "Auto", LINK_AUTO }, { "CRSF (ELRS/TBS)", LINK_CRSF }, { "FrSky SPort (R9)", LINK_SPORT } },
+    function() return widget.linkMode end,
+    function(v) widget.linkMode = v end)
+
+  -- shows which 0x50xx sensors were found and their raw values, over the display
+  line = form.addLine("Debug telemetry")
   form.addBooleanField(line, nil,
-    function() return widget.useSport end,
-    function(v) widget.useSport = v end)
+    function() return widget.debugTelem end,
+    function(v) widget.debugTelem = v end)
 end
 
 -- ================================================================
@@ -546,13 +642,18 @@ end
 local function read(widget)
   widget.switchSource   = storage.read("switchSource")
   widget.throttleSource = storage.read("throttleSource")
-  widget.useSport       = storage.read("useSport") or false
+  widget.linkMode       = storage.read("linkMode")
+  -- widgets saved by <=v0.3.1 only have the old "useSport" boolean; Auto covers
+  -- both of its settings, so they all migrate there
+  if widget.linkMode == nil then widget.linkMode = LINK_AUTO end
+  widget.debugTelem     = storage.read("debugTelem") or false
 end
 
 local function write(widget)
   storage.write("switchSource", widget.switchSource)
   storage.write("throttleSource", widget.throttleSource)
-  storage.write("useSport", widget.useSport)
+  storage.write("linkMode", widget.linkMode)
+  storage.write("debugTelem", widget.debugTelem)
 end
 
 -- ================================================================
