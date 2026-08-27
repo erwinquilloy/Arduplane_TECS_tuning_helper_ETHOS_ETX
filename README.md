@@ -52,8 +52,10 @@ EdgeTX version.
   as a full-screen widget
 * long-press the widget → **Configure**:
     * **Trigger switch** – the switch (momentary recommended) that advances the steps
-    * **Throttle source** – *(optional)* your throttle stick/channel; if left empty the
-      widget uses the throttle value reported by ArduPilot's VFR telemetry
+    * **Throttle source** – defaults to **Throttle** from the *Analogs* category;
+      change it if your throttle comes from another stick/channel. If it is cleared
+      (or no analog named Throttle exists) the widget falls back to the throttle
+      value reported by ArduPilot's VFR telemetry
 * open the screen and confirm Pitch/Roll update when you move the aircraft
 
 Requirements on the aircraft side are identical to the EdgeTX version

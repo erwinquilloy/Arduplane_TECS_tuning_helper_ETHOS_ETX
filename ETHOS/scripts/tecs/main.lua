@@ -261,6 +261,22 @@ local function fmtParam(name)
   return fmt(v)
 end
 
+-- Default throttle source: the "Throttle" member of the Analogs category.
+-- Members are walked by name instead of by index because the analog order
+-- depends on the radio and the configured stick mode.
+local function defaultThrottleSource()
+  for member = 0, 15 do
+    local ok, src = pcall(system.getSource, { category = CATEGORY_ANALOG, member = member })
+    if ok and src then
+      -- guarded: an error thrown here would take the whole widget down
+      local named, name = pcall(function() return src:name() end)
+      if named and (name == "Throttle" or name == "Thr") then return src end
+    end
+  end
+  -- no analog named Throttle: fall back to the VFR telemetry throttle
+  return nil
+end
+
 -- read throttle as percent: from configured stick source, else from VFR telemetry
 local function getThrottlePct(widget)
   if widget.throttleSource ~= nil then
@@ -433,7 +449,7 @@ local function create()
   return {
     -- config (persisted)
     switchSource   = nil,
-    throttleSource = nil,
+    throttleSource = defaultThrottleSource(),
     backColor      = lcd.RGB(0, 0, 0),
     foreColor      = lcd.RGB(255, 255, 255),
     linkMode       = LINK_AUTO,  -- which telemetry transport to poll
@@ -617,7 +633,7 @@ local function configure(widget)
     function() return widget.switchSource end,
     function(v) widget.switchSource = v end)
 
-  line = form.addLine("Throttle source (optional)")
+  line = form.addLine("Throttle source")
   form.addSourceField(line, nil,
     function() return widget.throttleSource end,
     function(v) widget.throttleSource = v end)
@@ -642,6 +658,10 @@ end
 local function read(widget)
   widget.switchSource   = storage.read("switchSource")
   widget.throttleSource = storage.read("throttleSource")
+  -- widgets saved before the default existed have no throttle source stored
+  if widget.throttleSource == nil then
+    widget.throttleSource = defaultThrottleSource()
+  end
   widget.linkMode       = storage.read("linkMode")
   -- widgets saved by <=v0.3.1 only have the old "useSport" boolean; Auto covers
   -- both of its settings, so they all migrate there
