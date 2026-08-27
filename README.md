@@ -254,7 +254,6 @@ The parameters this tool sets (13 total):
 > run before trusting a log.
 
 
-### detailed Process
 ![](_img/tecs_tuning_process.png)
 
 ##### additional Resources
