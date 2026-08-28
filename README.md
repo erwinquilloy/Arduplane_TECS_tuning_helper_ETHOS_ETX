@@ -52,10 +52,13 @@ EdgeTX version.
   as a full-screen widget
 * long-press the widget → **Configure**:
     * **Trigger switch** – the switch (momentary recommended) that advances the steps
-    * **Throttle source** – defaults to **Throttle** from the *Analogs* category;
-      change it if your throttle comes from another stick/channel. If it is cleared
-      (or no analog named Throttle exists) the widget falls back to the throttle
-      value reported by ArduPilot's VFR telemetry
+
+  There is no throttle setting: the widget always uses the throttle ArduPilot
+  itself reports, decoded from the `0x5001` AP_STATUS passthrough frame. That is
+  the value `TRIM_THROTTLE` and `THR_MAX` are expressed in. Reading the TX stick
+  instead would only be a proxy for it — any throttle curve, expo or mix makes
+  the two diverge (measured: with 60% expo a stick reading 63% was 54% at the
+  flight controller), and the captured parameters would be wrong by that much.
 * open the screen and confirm Pitch/Roll update when you move the aircraft
 
 Requirements on the aircraft side are identical to the EdgeTX version
@@ -145,7 +148,7 @@ carried by both transports, so both work:
   * `frames: 0` and nothing received → no passthrough is reaching the radio.
     Check the aircraft serial config; if the Yaapu script shows data on the
     same model, the link is fine and this is a widget bug worth reporting.
-  * frames rising with `5006` / `5005` / `50F2` listed → decoding is live.
+  * frames rising with `5006` / `5005` / `5001` listed → decoding is live.
 
 ### Preparation (before you tune)
 

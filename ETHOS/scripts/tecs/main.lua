@@ -1,4 +1,4 @@
--- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.4.0
+-- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.5.0
 -- Ethos port of the OpenTX/EdgeTX "Arduplane TECS tuning helper" widget.
 --
 -- This program is free software; you can redistribute it and/or modify
@@ -27,6 +27,9 @@ local CRSF_FRAME_CUSTOM_TELEM_LEGACY  = 0x7F
 local CRSF_PASSTHROUGH                = 0xF0
 local CRSF_PASSTHROUGH_ARRAY          = 0xF2
 
+local crsfPops   = 0      -- CRSF frames popped since start (debug)
+local crsfFrames = 0      -- CRSF frames carrying passthrough app-ids (debug)
+
 local STEP_COUNT = 7      -- number of tuning steps
 local TRIGGER_HOLDOFF = 1.5 -- seconds, debounce between switch activations
 
@@ -52,7 +55,9 @@ local telemetry = {
   vSpeed   = 0,   -- dm/s (climb/sink rate)
   hSpeed   = 0,   -- dm/s (groundspeed)
   airspeed = 0,   -- dm/s
-  throttle = 0,   -- percent (from VFR frame)
+  throttle = 0,   -- percent, signed (from the 0x5001 AP_STATUS frame)
+  mode     = -1,  -- ArduPlane mode number, -1 until a frame arrives
+  armed    = 0,   -- 1 when the FC reports armed
 }
 
 local telemetryOk = false
@@ -63,7 +68,15 @@ local function bitExtract(value, start, len)
   return (value >> start) & ((1 << len) - 1)
 end
 
+-- app-ids seen, recorded inside processTelemetry so the diagnostic page shows
+-- whichever transport is live (the CRSF path never goes through sportPop)
+local telemSeen      = {}   -- { "appId" -> last value }
+local telemSeenOrder = {}   -- appIds in first-seen order
+
 local function processTelemetry(appId, value)
+  local key = string.format("%04X", appId)
+  if telemSeen[key] == nil then telemSeenOrder[#telemSeenOrder + 1] = key end
+  telemSeen[key] = value
   if appId == 0x5006 then          -- ROLLPITCH
     telemetry.roll  = (math.min(bitExtract(value, 0, 11), 1800) - 900) * 0.2
     telemetry.pitch = (math.min(bitExtract(value, 11, 10), 900) - 450) * 0.2
@@ -75,7 +88,29 @@ local function processTelemetry(appId, value)
     else
       telemetry.hSpeed = bitExtract(value, 10, 7) * (10 ^ bitExtract(value, 9, 1))
     end
-  elseif appId == 0x50F2 then      -- VFR
+  elseif appId == 0x5001 then      -- AP STATUS
+    -- ArduPilot carries throttle here, NOT in 0x50F2: that app-id is a PX4
+    -- packet and ArduPilot's PassthroughPacketType enum never emits it, so
+    -- the branch below stays dead on a plane. 6-bit magnitude at 19 plus a
+    -- sign bit at 25, sent as [-63,63] (AP_THROTTLE_OFFSET in
+    -- AP_Frsky_SPort_Passthrough.cpp), rescaled here to [-100,100].
+    -- ArduPilot encodes with prep_number(throttle*0.63, 2, 0), and that call
+    -- passes a float into an int32_t parameter, so the wire value is
+    -- floor(throttle * 0.63) -- truncated, not rounded like prep_number's other
+    -- branches. Reconstructing at n/0.63 (what Yaapu does, as n*1.58) therefore
+    -- sits on the bottom edge of each bucket and reads ~1% low across the whole
+    -- range; +0.5 centres it. Against Mission Planner's unquantised value that
+    -- is exact 64 times in 101 instead of 19, worst case 1% instead of 2%.
+    -- n == 0 is special-cased: idle really is 0%, not the bucket midpoint.
+    local thrRaw = bitExtract(value, 19, 6)
+    local thrMag = 0
+    if thrRaw > 0 then
+      thrMag = math.min(100, math.floor(0.5 + (thrRaw + 0.5) / 0.63))
+    end
+    telemetry.throttle = thrMag * (bitExtract(value, 25, 1) == 1 and -1 or 1)
+    telemetry.mode  = bitExtract(value, 0, 5)
+    telemetry.armed = bitExtract(value, 8, 1)
+  elseif appId == 0x50F2 then      -- VFR (PX4 only; kept for completeness)
     telemetry.airspeed = bitExtract(value, 1, 7) * (10 ^ bitExtract(value, 0, 1))
     telemetry.throttle = bitExtract(value, 8, 7)
   end
@@ -87,10 +122,12 @@ local function crossfirePop()
   if command == nil or data == nil then
     return false
   end
+  crsfPops = crsfPops + 1
   if command == CRSF_FRAME_CUSTOM_TELEM or command == CRSF_FRAME_CUSTOM_TELEM_LEGACY then
     if #data >= 7 and data[1] == CRSF_PASSTHROUGH then
       local appId = (data[3] << 8) + data[2]
       local value = (data[7] << 24) + (data[6] << 16) + (data[5] << 8) + data[4]
+      crsfFrames = crsfFrames + 1
       processTelemetry(appId, value)
       return true
     elseif #data >= 8 and data[1] == CRSF_PASSTHROUGH_ARRAY then
@@ -98,6 +135,7 @@ local function crossfirePop()
         local appId = (data[4 + (6 * i)] << 8) + data[3 + (6 * i)]
         local value = (data[8 + (6 * i)] << 24) + (data[7 + (6 * i)] << 16)
                       + (data[6 + (6 * i)] << 8) + data[5 + (6 * i)]
+        crsfFrames = crsfFrames + 1
         processTelemetry(appId, value)
       end
       return true
@@ -135,61 +173,111 @@ local SPORT_PRIM_DATA = 0x10   -- SPort DATA_FRAME; polls/requests use other pri
 local SPORT_APPID_LO  = 0x800
 local SPORT_APPID_HI  = 0x51FF
 
-local sportSensor  = nil    -- frame reader, resolved on first use
+local sportReaders = {}     -- { name=, sensor=, pops=, frames= } per module
 local sportTried   = false  -- so we only attempt to build it once
 local sportFrames  = 0      -- frames popped since start (debug)
-local sportSeen    = {}     -- { "appId" -> last value } for the debug page
-local sportSeenOrder = {}   -- appIds in first-seen order (debug)
 local sportErr     = nil    -- why the sensor could not be built (debug)
+local sportPops    = 0      -- frames popped, before the primId filter (debug)
+local sportNonData = 0      -- popped frames whose primId was not 0x10 (debug)
+local sportPopErr  = nil    -- last error thrown by popFrame(), verbatim (debug)
 
--- builds the frame reader. sport.* is missing on very old Ethos builds, and an
+-- builds the frame readers. sport.* is missing on very old Ethos builds, and an
 -- error thrown inside wakeup() kills the widget silently, so this is guarded.
+--
+-- Ethos binds a reader to one RF module and offers no way to ask which one
+-- carries the link, so both bindings are built and both are drained -- an
+-- internal R9 and a module-bay ELRS then need no configuration. (Yaapu asks the
+-- user instead: "internal module" passes no module key, "external module"
+-- passes module=1.) The per-reader counters on the debug page say which is live.
 local function sportInit()
   sportTried = true
   if sport == nil or sport.getSensor == nil then
     sportErr = "no sport API"
     return
   end
-  local ok, sensor = pcall(sport.getSensor,
-                           { appIdStart = SPORT_APPID_LO, appIdEnd = SPORT_APPID_HI })
-  if not ok or sensor == nil then
-    -- some builds reject the range filter; an unfiltered reader works too
-    ok, sensor = pcall(sport.getSensor)
-    if not ok or sensor == nil then
-      sportErr = "getSensor failed"
-      return
+  local wanted = {
+    { name = "dflt", arg = { appIdStart = SPORT_APPID_LO, appIdEnd = SPORT_APPID_HI } },
+    { name = "mod1", arg = { module = 1,
+                             appIdStart = SPORT_APPID_LO, appIdEnd = SPORT_APPID_HI } },
+  }
+  for _, w in ipairs(wanted) do
+    local ok, sensor = pcall(sport.getSensor, w.arg)
+    if ok and sensor ~= nil then
+      sportReaders[#sportReaders + 1] =
+        { name = w.name, sensor = sensor, pops = 0, frames = 0 }
     end
   end
-  sportSensor = sensor
+  if #sportReaders == 0 then
+    -- some builds reject the filter table; an unfiltered reader works too
+    local ok, sensor = pcall(sport.getSensor)
+    if ok and sensor ~= nil then
+      sportReaders[1] = { name = "raw", sensor = sensor, pops = 0, frames = 0 }
+    else
+      sportErr = "getSensor failed"
+    end
+  end
 end
 
--- pops one waiting SPort frame and decodes it. Returns true if a passthrough
--- data frame was consumed.
-local function sportPop()
-  if sportSensor == nil then
-    if sportTried then return false end
-    sportInit()
-    if sportSensor == nil then return false end
+-- pops one waiting frame off `r` and decodes it. Returns true if any frame was
+-- consumed, so the caller keeps draining while the queue has more.
+local function sportPopOne(r)
+  -- the thrown message is kept, not discarded: on Ethos 1.6.x popFrame can be
+  -- nil, which is indistinguishable from an idle link once the error is gone
+  local ok, frame = pcall(function() return r.sensor:popFrame() end)
+  if not ok then
+    sportPopErr = tostring(frame)
+    return false
   end
-
-  local ok, frame = pcall(function() return sportSensor:popFrame() end)
-  if not ok or frame == nil then return false end
+  if frame == nil then return false end
+  r.pops = r.pops + 1
+  sportPops = sportPops + 1
 
   local primId = frame:primId()
   if primId ~= SPORT_PRIM_DATA then
+    sportNonData = sportNonData + 1
     return true   -- a real frame, just not a data frame: keep draining
   end
 
   local appId = frame:appId()
   local value = frame:value() & 0xFFFFFFFF
 
+  r.frames = r.frames + 1
   sportFrames = sportFrames + 1
-  local key = string.format("%04X", appId)
-  if sportSeen[key] == nil then sportSeenOrder[#sportSeenOrder + 1] = key end
-  sportSeen[key] = value
 
   processTelemetry(appId, value)
   return true
+end
+
+-- drains one frame from every reader. Returns true if any of them yielded.
+local function sportPop()
+  if #sportReaders == 0 then
+    if sportTried then return false end
+    sportInit()
+    if #sportReaders == 0 then return false end
+  end
+
+  local any = false
+  for _, r in ipairs(sportReaders) do
+    if sportPopOne(r) then any = true end
+  end
+  return any
+end
+
+-- ArduPlane mode numbers (ArduPlane/mode.h). Only 5 bits are sent, so 0-31.
+-- Worth showing by name: throttle telemetry reads 0 while armed on the ground in
+-- any auto-throttle mode, so "LOITER" instead of "FBWA" explains a dead reading.
+local MODE_NAMES = {
+  [0]="MANUAL", [1]="CIRCLE", [2]="STAB", [3]="TRAIN", [4]="ACRO",
+  [5]="FBWA", [6]="FBWB", [7]="CRUISE", [8]="AUTOTUNE", [10]="AUTO",
+  [11]="RTL", [12]="LOITER", [13]="TAKEOFF", [14]="AVOID", [15]="GUIDED",
+  [16]="INIT", [17]="QSTAB", [18]="QHOVER", [19]="QLOITER", [20]="QLAND",
+  [21]="QRTL", [22]="QAUTOTUNE", [23]="QACRO", [24]="THERMAL",
+  [25]="LOITER_QLAND", [26]="COURSE_HOLD", [27]="AUTO_TRIM",
+}
+
+local function modeName(m)
+  if m < 0 then return "--" end
+  return MODE_NAMES[m] or string.format("mode %d", m)
 end
 
 -- ================================================================
@@ -261,31 +349,6 @@ local function fmtParam(name)
   return fmt(v)
 end
 
--- Default throttle source: the "Throttle" member of the Analogs category.
--- Members are walked by name instead of by index because the analog order
--- depends on the radio and the configured stick mode.
-local function defaultThrottleSource()
-  for member = 0, 15 do
-    local ok, src = pcall(system.getSource, { category = CATEGORY_ANALOG, member = member })
-    if ok and src then
-      -- guarded: an error thrown here would take the whole widget down
-      local named, name = pcall(function() return src:name() end)
-      if named and (name == "Throttle" or name == "Thr") then return src end
-    end
-  end
-  -- no analog named Throttle: fall back to the VFR telemetry throttle
-  return nil
-end
-
--- read throttle as percent: from configured stick source, else from VFR telemetry
-local function getThrottlePct(widget)
-  if widget.throttleSource ~= nil then
-    local v = widget.throttleSource:value()   -- stick -1024..1024
-    return math.floor((v + 1024) / 20.48)
-  end
-  return telemetry.throttle                    -- VFR reports 0..100 directly
-end
-
 -- ================================================================
 -- TUNING STEPS  (audio instructions + value capture)
 -- ================================================================
@@ -299,7 +362,7 @@ local stepDef = {
     text = "Continue in Fly by Wire A and fly level at desired cruise speed.",
     audio = function() playFile("tecs10.wav") end,
     fn = function(widget)
-      TECS.TRIM_THROTTLE.value = getThrottlePct(widget)
+      TECS.TRIM_THROTTLE.value = telemetry.throttle
       TECS.AIRSPEED_CRUISE.value = capArspd()
     end,
   },
@@ -311,7 +374,7 @@ local stepDef = {
       playFile("tecs20.wav")
     end,
     fn = function(widget)
-      TECS.THR_MAX.value       = getThrottlePct(widget)
+      TECS.THR_MAX.value       = telemetry.throttle
       TECS.AIRSPEED_MAX.value = capArspd()
     end,
   },
@@ -377,7 +440,7 @@ local stepDef = {
     end,
     fn = function(widget)
       TECS.KFF_THR2PTCH.value = telemetry.pitch
-        - math.sqrt((TECS.TRIM_THROTTLE.value - getThrottlePct(widget))
+        - math.sqrt((TECS.TRIM_THROTTLE.value - telemetry.throttle)
                     / (TECS.TRIM_THROTTLE.value - 100))
     end,
   },
@@ -412,7 +475,24 @@ end
 -- STEP MACHINE  (mirrors the OpenTX manual_trigger logic)
 -- returns a short status string for display
 -- ================================================================
+-- A cleared source field is NOT nil on Ethos: it hands back a real Source object
+-- reporting name "---" and value 0. Every `== nil` test on a configured source
+-- has to go through this or an unset field reads as a live one stuck at zero.
+local function sourceOrNil(src)
+  if src == nil then return nil end
+  local ok, name = pcall(function() return src:name() end)
+  if ok and (name == nil or name == "" or name == "---") then return nil end
+  return src
+end
+
 local function advance(widget)
+  -- every captured value now comes from telemetry, so advancing on a dead link
+  -- would silently record zeros into the parameters. Refuse, and say why.
+  if not telemetryOk then
+    widget.warn = "no telemetry - step not recorded"
+    return
+  end
+  widget.warn = nil
   if widget.step == 1 then
     stepDef[1].audio()
     widget.step = 2
@@ -432,9 +512,10 @@ end
 
 -- rising-edge + hold-off detection on the trigger switch
 local function checkTrigger(widget)
-  if widget.switchSource == nil then return end
+  local sw = sourceOrNil(widget.switchSource)
+  if sw == nil then return end
   local now = os.clock()
-  local active = widget.switchSource:value() > 0
+  local active = sw:value() > 0
   if active and not widget.switchWasActive and (now - widget.lastTrigger) > TRIGGER_HOLDOFF then
     widget.lastTrigger = now
     advance(widget)
@@ -449,7 +530,6 @@ local function create()
   return {
     -- config (persisted)
     switchSource   = nil,
-    throttleSource = defaultThrottleSource(),
     backColor      = lcd.RGB(0, 0, 0),
     foreColor      = lcd.RGB(255, 255, 255),
     linkMode       = LINK_AUTO,  -- which telemetry transport to poll
@@ -458,6 +538,7 @@ local function create()
     step           = 1,
     lastTrigger    = 0,
     switchWasActive = false,
+    warn           = nil,        -- shown under "info:" when a step is refused
   }
 end
 
@@ -513,29 +594,44 @@ local function wrapText(text, maxW)
   return lines
 end
 
--- Diagnostic page for the FrSky SPort path. "frames" counts passthrough data
--- frames actually popped off the link: 0 with a working Yaapu install means the
--- reader was never built (see the status line), while a rising count with the
--- three app-ids listed means decoding is live.
+-- Diagnostic page for both transports. Each SPort reader is counted separately
+-- (dflt = no module key, mod1 = module=1) so the live binding is visible, and
+-- CRSF has its own counters. The app-id list is fed from processTelemetry, so
+-- it fills in for whichever transport is carrying the link.
 local function paintDebug(widget, w, h)
   lcd.font(FONT_S)
   local _, lineH = lcd.getTextSize("0")
   local row = lineH + 2
   local y = 2
 
-  lcd.drawText(4, y, "SPORT DEBUG"); y = y + row
-  lcd.drawText(4, y, "reader: " ..
-    (sportSensor ~= nil and "ok" or (sportErr or "not built yet"))); y = y + row
+  lcd.drawText(4, y, "TELEM DEBUG"); y = y + row
+  lcd.drawText(4, y, "readers: " .. (#sportReaders > 0
+    and (#sportReaders .. " built") or (sportErr or "not built yet"))); y = y + row
+  for _, r in ipairs(sportReaders) do
+    lcd.drawText(4, y, string.format("  %s: pops %d  frames %d",
+      r.name, r.pops, r.frames)); y = y + row
+  end
   lcd.drawText(4, y, string.format("frames: %d", sportFrames)); y = y + row
+  lcd.drawText(4, y, string.format("pops: %d  nondata: %d",
+    sportPops, sportNonData)); y = y + row
+  lcd.drawText(4, y, string.format("crsf pops: %d  frames: %d",
+    crsfPops, crsfFrames)); y = y + row
+  lcd.drawText(4, y, string.format("mode: %s  %s", modeName(telemetry.mode),
+    telemetry.armed == 1 and "ARMED" or "disarmed")); y = y + row
+  if sportPopErr ~= nil then
+    for _, l in ipairs(wrapText("popFrame: " .. sportPopErr, w - 8)) do
+      lcd.drawText(4, y, l); y = y + row
+    end
+  end
 
   y = y + 4
   lcd.drawText(4, y, "appId = value (last seen):"); y = y + row
-  if #sportSeenOrder == 0 then
+  if #telemSeenOrder == 0 then
     lcd.drawText(4, y, "(nothing received)"); y = y + row
   else
-    for _, key in ipairs(sportSeenOrder) do
+    for _, key in ipairs(telemSeenOrder) do
       if y > h - row then break end
-      lcd.drawText(4, y, string.format("%s = %08X", key, sportSeen[key])); y = y + row
+      lcd.drawText(4, y, string.format("%s = %08X", key, telemSeen[key])); y = y + row
     end
   end
 end
@@ -578,13 +674,18 @@ local function paint(widget)
   kv(telX, telValX, y, "roll",        fmt(telemetry.roll)); y = y + row
   kv(telX, telValX, y, "gspeed kph",  fmt(dmsToKph(telemetry.hSpeed))); y = y + row
   kv(telX, telValX, y, "aspeed kph",  fmt(dmsToKph(telemetry.airspeed))); y = y + row
-  kv(telX, telValX, y, "climb m/s",   fmt(dmsToMs(telemetry.vSpeed))); y = y + row + 4
+  kv(telX, telValX, y, "climb m/s",   fmt(dmsToMs(telemetry.vSpeed))); y = y + row
+  -- always the FC's own commanded throttle: the stick is only a proxy for it and
+  -- any curve, expo or mix makes the two diverge, so there is nothing to choose
+  kv(telX, telValX, y, "throttle %",  fmt(telemetry.throttle)); y = y + row + 4
 
   lcd.drawText(telX, y, "info:"); y = y + row
   kv(telX, telValX, y, "telemetry", telemetryOk and "OK" or "--"); y = y + row
   kv(telX, telValX, y, "step",      string.format("%d/%d", widget.step, STEP_COUNT + 1)); y = y + row
-  if widget.switchSource == nil then
-    lcd.drawText(telX, y, "set trigger switch!")
+  if sourceOrNil(widget.switchSource) == nil then
+    lcd.drawText(telX, y, "set trigger switch!"); y = y + row
+  elseif widget.warn ~= nil then
+    lcd.drawText(telX, y, widget.warn); y = y + row
   end
 
   -- --- TECS params block (right) ---
@@ -633,11 +734,6 @@ local function configure(widget)
     function() return widget.switchSource end,
     function(v) widget.switchSource = v end)
 
-  line = form.addLine("Throttle source")
-  form.addSourceField(line, nil,
-    function() return widget.throttleSource end,
-    function(v) widget.throttleSource = v end)
-
   -- Auto polls both transports; the forced modes are only needed for debugging.
   line = form.addLine("Telemetry link")
   form.addChoiceField(line, nil,
@@ -657,11 +753,6 @@ end
 -- ================================================================
 local function read(widget)
   widget.switchSource   = storage.read("switchSource")
-  widget.throttleSource = storage.read("throttleSource")
-  -- widgets saved before the default existed have no throttle source stored
-  if widget.throttleSource == nil then
-    widget.throttleSource = defaultThrottleSource()
-  end
   widget.linkMode       = storage.read("linkMode")
   -- widgets saved by <=v0.3.1 only have the old "useSport" boolean; Auto covers
   -- both of its settings, so they all migrate there
@@ -671,7 +762,6 @@ end
 
 local function write(widget)
   storage.write("switchSource", widget.switchSource)
-  storage.write("throttleSource", widget.throttleSource)
   storage.write("linkMode", widget.linkMode)
   storage.write("debugTelem", widget.debugTelem)
 end

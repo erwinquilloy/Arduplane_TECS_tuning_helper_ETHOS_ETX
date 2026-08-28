@@ -35,3 +35,37 @@
                         instruction as a caption at the bottom of the screen, mirroring the
                         Ethos build. Gives a visual fallback for the step callouts, which are
                         hard to hear on the TX16S speaker.
+* v0.4.0    25.08.2026  Ethos: read ArduPilot passthrough with sport.getSensor():popFrame()
+                        instead of polling the 0x50xx app-ids as telemetry sensors, which
+                        Ethos never creates. Fixes no-telemetry on FrSky SPort / F.Port
+                        (R9) models. Throttle source defaulted to the Throttle analog.
+* v0.5.0    29.08.2026  Ethos: throttle telemetry fixed, and the throttle source setting
+                        removed.
+                        - throttle was only ever read from app-id 0x50F2, which ArduPilot
+                          NEVER sends (it is a PX4 packet; see PassthroughPacketType in
+                          AP_Frsky_SPort_Passthrough.h). The telemetry throttle was therefore
+                          structurally 0 for every ArduPlane user, on every transport. It is
+                          now decoded from 0x5001 AP_STATUS: 6-bit magnitude at bit 19, sign
+                          at bit 25.
+                        - that value is reconstructed at the CENTRE of its quantisation
+                          bucket, not the bottom edge. ArduPilot encodes with
+                          prep_number(throttle*0.63, 2, 0), whose int32_t argument truncates,
+                          so the n*1.58 form used by Yaapu reads ~1% low across the range.
+                          Centring matches Mission Planner exactly 64 times in 101 rather
+                          than 19, worst case 1% instead of 2%.
+                        - the "Throttle source" config field is GONE. The widget always uses
+                          the flight controller's own commanded throttle. Reading the TX
+                          stick was only a proxy: with 60% expo a stick reading 63% was 54%
+                          at the FC, and 63% was what got written to TRIM_THROTTLE.
+                        - SPort now builds BOTH module bindings (no module key, and
+                          module=1) and drains both, so an internal RF module and a
+                          module-bay TX both work with nothing to configure.
+                        - a cleared Ethos source field is not nil: Ethos returns a real
+                          Source object named "---" with value 0. Treated as unset now;
+                          previously it made the throttle read a constant 50%.
+                        - steps refuse to advance while telemetry is stale, instead of
+                          silently capturing zeros into the parameters.
+                        - debug page covers both transports: per-reader SPort counters,
+                          CRSF counters, the popFrame() error text (previously swallowed by
+                          a pcall), flight mode and armed state, and an app-id list fed from
+                          the decoder so it fills in whichever transport is live.
