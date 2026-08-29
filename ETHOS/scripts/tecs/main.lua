@@ -1,4 +1,4 @@
--- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.5.0
+-- TECS tuning advisor for FrSky Ethos (X20S / X18 / X18S ...)  v0.5.1
 -- Ethos port of the OpenTX/EdgeTX "Arduplane TECS tuning helper" widget.
 --
 -- This program is free software; you can redistribute it and/or modify
@@ -757,13 +757,18 @@ local function read(widget)
   -- widgets saved by <=v0.3.1 only have the old "useSport" boolean; Auto covers
   -- both of its settings, so they all migrate there
   if widget.linkMode == nil then widget.linkMode = LINK_AUTO end
-  widget.debugTelem     = storage.read("debugTelem") or false
+  -- NOT "or false": storage round-trips a boolean through the radio's config
+  -- store as a number, so a saved `false` comes back as 0 -- and 0 is TRUTHY in
+  -- Lua, which left the debug overlay stuck on for every model after the first
+  -- write. Compare explicitly against the values that mean "on".
+  local dbg = storage.read("debugTelem")
+  widget.debugTelem     = (dbg == true or dbg == 1)
 end
 
 local function write(widget)
   storage.write("switchSource", widget.switchSource)
   storage.write("linkMode", widget.linkMode)
-  storage.write("debugTelem", widget.debugTelem)
+  storage.write("debugTelem", widget.debugTelem and 1 or 0)
 end
 
 -- ================================================================

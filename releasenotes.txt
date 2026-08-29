@@ -69,3 +69,9 @@
                           CRSF counters, the popFrame() error text (previously swallowed by
                           a pcall), flight mode and armed state, and an app-id list fed from
                           the decoder so it fills in whichever transport is live.
+* v0.5.1    29.08.2026  Ethos: the debug telemetry overlay no longer switches itself on. read()
+                        used `storage.read("debugTelem") or false`, which only guards nil: once
+                        write() had stored the boolean it came back as the number 0, and 0 is
+                        truthy in Lua, so every later load (model switch, radio restart) painted
+                        the debug page instead of the widget. The flag is now stored as 1/0 and
+                        compared explicitly.
