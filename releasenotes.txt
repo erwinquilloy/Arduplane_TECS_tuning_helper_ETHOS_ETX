@@ -75,3 +75,18 @@
                         truthy in Lua, so every later load (model switch, radio restart) painted
                         the debug page instead of the widget. The flag is now stored as 1/0 and
                         compared explicitly.
+* v0.5.2    06.10.2026  All builds: KFF_THR2PTCH is always written as 0. The v0.2.3 step-7
+                        formula, pitch - sqrt((TRIM - thr)/(TRIM - 100)), does not match
+                        ArduPlane, which adds KFF_THR2PTCH x throttle%/100 deg counted from
+                        ZERO throttle: at full stick it always gave pitch - 1 (1 deg extra
+                        nose-down) and below TRIM_THROTTLE it gave NaN. Step 7 is still
+                        flown but only records the full-speed pitch and throttle, written
+                        to the log (and shown next to KFF_THR2PTCH on Ethos) as a guide for
+                        tuning KFF_THR2PTCH by hand.
+                        EdgeTX color widget + x9D/Q7: TRIM_THROTTLE, THR_MAX and the step-7
+                        throttle now come from the flight controller's throttle (0x5001
+                        AP_STATUS, bucket-centred as on Ethos) instead of the TX stick; the
+                        stick is only a fallback when no AP_STATUS frame arrived in the
+                        last 2 s.
+                        README: why KFF_THR2PTCH stays 0, and running the helper on ArduPlane
+                        Custom builds with adaptive pitch trim (switch LOW).

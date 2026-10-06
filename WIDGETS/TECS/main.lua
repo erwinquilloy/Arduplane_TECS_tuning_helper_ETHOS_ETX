@@ -181,7 +181,12 @@ local function processTelemetry(DATA_ID, VALUE,now)
       telemetry.failsafe = bit32.extract(VALUE,12,1)
       telemetry.fencePresent = bit32.extract(VALUE,13,1)
       telemetry.fenceBreached = telemetry.fencePresent == 1 and bit32.extract(VALUE,14,1) or 0 -- we ignore fence breach if fence is disabled
-      telemetry.throttle = math.floor(0.5 + (bit32.extract(VALUE,19,6) * (bit32.extract(VALUE,25,1) == 1 and -1 or 1) * 1.58)) -- signed throttle [-63,63] -> [-100,100]
+      -- signed throttle [-63,63] -> [-100,100], rebuilt at the centre of its
+      -- quantisation bucket (ArduPilot truncates throttle*0.63; see the ETHOS build)
+      local thrRaw = bit32.extract(VALUE,19,6)
+      local thrMag = thrRaw > 0 and math.min(100, math.floor(0.5 + (thrRaw + 0.5) / 0.63)) or 0
+      telemetry.throttle = thrMag * (bit32.extract(VALUE,25,1) == 1 and -1 or 1)
+      telemetry.throttleTime = getTime()
       -- IMU temperature: 0 means temp =< 19°, 63 means temp => 82°
       telemetry.imuTemp = bit32.extract(VALUE,26,6) + 19 -- C°
     elseif DATA_ID == 0x5002 then -- GPS STATUS
@@ -364,7 +369,16 @@ local function DMS_to_MS(DMS)      	return string.format("%d", (DMS*0.1) )    		
 local function DMs_to_CMs(DMS)      return string.format("%d", (DMS*10) )    			end
 local function DMs_to_KPH(DMS)      return string.format("%d", (DMS/10*3.6) )    		end
 local function KPH_to_Ms(KPH)       return string.format("%d", (KPH/3.6) )      		end
-local getThrottlePct = function()	return math.floor((getValue("thr")+1024)/ 20.48)  	end
+-- throttle as the flight controller outputs it (0x5001 AP_STATUS) - the unit
+-- TRIM_THROTTLE and THR_MAX are in. The TX stick is only a proxy (expo, curves
+-- and mixes make the two differ); it is used only if no AP_STATUS frame arrived
+-- in the last 2 s.
+local getThrottlePct = function()
+	if telemetry.throttleTime ~= nil and getTime() - telemetry.throttleTime < 200 then
+		return telemetry.throttle
+	end
+	return math.floor((getValue("thr")+1024)/ 20.48)
+end
 
 
 TECS = {
@@ -387,8 +401,17 @@ TECS = {
     TECS_PITCH_MIN  = { value = 4,  exporter = function(v) return(v - 4) end },    						-- raw deg output: +/-deg - 4
     TECS_SINK_MAX   = { value = 0,  exporter = function(v) return(math.min(math.abs(0.1*v),10))  end }, -- raw: dm/s output: +m/s
 --7
-    KFF_THR2PTCH    = { value = 0,  exporter = function(v) return(v) end },    							-- raw: deg output: +/-deg
+-- KFF_THR2PTCH is always written as 0. ArduPlane adds KFF_THR2PTCH x throttle%/100
+-- degrees from ZERO throttle, so no single value is right at both cruise and full
+-- throttle; the old step-7 formula (pitch - sqrt(...)) did not model this at all.
+-- Step 7 still records the full-speed pitch and throttle (FULLSPEED, shown in the
+-- log) as a starting point for tuning it by hand. Keep 0 with ArduPlane Custom
+-- adaptive pitch trim (RCx_OPTION 254).
+    KFF_THR2PTCH    = { value = 0,  exporter = function(v) return(0) end },
 }
+
+-- step 7 record (not a parameter): pitch (deg) and throttle (%) at full speed
+FULLSPEED = { pitch = nil, thr = nil }
 
 
 -- these are the tuning steps
@@ -487,10 +510,12 @@ local stepDef = {
 		end,
         text  = function(arg)   return string.format("fly full speed and try to hold altitude")        end,
         fn    = function(arg)
-            TECS['KFF_THR2PTCH'].value = telemetry.pitch - math.sqrt( ( TECS['TRIM_THROTTLE'].value - getThrottlePct() ) / ( TECS['TRIM_THROTTLE'].value - 100 ))
+            -- record only: KFF_THR2PTCH stays 0 (see the note at TECS above)
+            FULLSPEED.pitch = telemetry.pitch
+            FULLSPEED.thr   = getThrottlePct()
             return
         end
-    }
+    },
 }
 
 
@@ -551,6 +576,11 @@ local function logTECS(TECS)
 			end
 		end
 		io.write(f, string.format("%s=%s\r\n", param, exportValue ))
+	end
+	if FULLSPEED.pitch ~= nil then
+		io.write(f, string.format("# full speed (step 7): pitch %.1f deg at %d%% throttle - KFF_THR2PTCH left at 0, see README\r\n", FULLSPEED.pitch, FULLSPEED.thr))
+	else
+		io.write(f, "# KFF_THR2PTCH left at 0, see README\r\n")
 	end
 	
 	if debug then

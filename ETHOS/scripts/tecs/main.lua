@@ -307,8 +307,17 @@ local TECS = {
   TECS_SINK_MIN   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- m/s
   TECS_PITCH_MIN  = { value = 4,  exporter = function(v) return v - 4 end },              -- -deg  (+4 margin)
   TECS_SINK_MAX   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- +m/s
-  KFF_THR2PTCH    = { value = 0,  exporter = function(v) return v end },                  -- deg
+  -- KFF_THR2PTCH is always written as 0. ArduPlane adds KFF_THR2PTCH x throttle%/100
+  -- degrees from ZERO throttle, so no single value is right at both cruise and full
+  -- throttle; the old step-7 formula (pitch - sqrt(...)) did not model this at all.
+  -- Step 7 still records the full-speed pitch and throttle (FULLSPEED, shown in the
+  -- log) as a starting point for tuning it by hand. Keep 0 with ArduPlane Custom
+  -- adaptive pitch trim (RCx_OPTION 254).
+  KFF_THR2PTCH    = { value = 0,  exporter = function(v) return 0 end },
 }
+
+-- step 7 record (not a parameter): pitch (deg) and throttle (%) at full speed
+local FULLSPEED = { pitch = nil, thr = nil }
 
 -- ordered list for display / logging
 local TECS_ORDER = {
@@ -345,6 +354,9 @@ local function fmtParam(name)
   local v = exportTECS(name)
   if SPEED_PARAMS[name] then
     return string.format("%s (%skph)", fmt(v), fmt(v * 3.6))
+  end
+  if name == "KFF_THR2PTCH" and FULLSPEED.pitch ~= nil then
+    return string.format("%s (%.1f@%d%%)", fmt(v), FULLSPEED.pitch, FULLSPEED.thr)
   end
   return fmt(v)
 end
@@ -439,9 +451,9 @@ local stepDef = {
       playFile("tecs70.wav")
     end,
     fn = function(widget)
-      TECS.KFF_THR2PTCH.value = telemetry.pitch
-        - math.sqrt((TECS.TRIM_THROTTLE.value - telemetry.throttle)
-                    / (TECS.TRIM_THROTTLE.value - 100))
+      -- record only: KFF_THR2PTCH stays 0 (see the note at TECS above)
+      FULLSPEED.pitch = telemetry.pitch
+      FULLSPEED.thr   = telemetry.throttle
     end,
   },
 }
@@ -463,6 +475,11 @@ local function logTECS()
   if f == nil then return end
   for _, name in ipairs(TECS_ORDER) do
     io.write(f, string.format("%s=%s\r\n", name, fmt(exportTECS(name))))
+  end
+  if FULLSPEED.pitch ~= nil then
+    io.write(f, string.format("# full speed (step 7): pitch %.1f deg at %d%% throttle - KFF_THR2PTCH left at 0, see README\r\n", FULLSPEED.pitch, FULLSPEED.thr))
+  else
+    io.write(f, "# KFF_THR2PTCH left at 0, see README\r\n")
   end
   -- raw captured values for debugging
   for _, name in ipairs(TECS_ORDER) do

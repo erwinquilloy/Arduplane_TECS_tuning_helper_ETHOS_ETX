@@ -83,6 +83,10 @@ same Lua widget API — no separate build is needed for either revision).
 
 * reboot your radio to flush the widget cache
 * telemetry values on the left should change when moving your aircraft
+* throttle: like the Ethos build, the widget records the throttle the flight
+  controller reports (`0x5001` AP_STATUS), which is what `TRIM_THROTTLE` and
+  `THR_MAX` are in. Only if no AP_STATUS frame arrived in the last 2 s does it
+  fall back to the TX throttle stick.
 ![](_img/horus_example.png)
 
 
@@ -96,6 +100,8 @@ same Lua widget API — no separate build is needed for either revision).
 * set up a switch in SPECIAL FUNCTION to trigger the script (momentary switch recommended)
 ![](_img/special_functions.png)
 * open your telemetry screen and validate that Pitch and Roll updating accordingly to aircraft movement
+* throttle is taken from the flight controller's AP_STATUS telemetry, as on the
+  color widget; the TX throttle stick is only the fallback when that is missing.
 ![](_img/telemetry_screen_empty.png)
 
 > **FrSky SPort link (R9 etc.):** this telemetry-script version has no settings
@@ -235,14 +241,51 @@ modified-time to find the newest file.
 2. **Merge the log in Mission Planner (recommended).** In *Config → Full Parameter List* use **Load from file** (or **Compare Params**) and point it at `tecs_<timestamp>.txt`. Review the diff it shows, then **Write Params**. Fastest and least error-prone for the full set. *(The file's `NAME=value` layout matches the param format; if your MP version is strict about it, paste the values into the matching rows manually.)*
 3. **Copy from the screen.** No computer? Read the values straight off the TECS telemetry screen and enter them in your ground station over a telemetry/Bluetooth link.
 
-The parameters this tool sets (13 total):
+The parameters this tool sets (13 total, 12 of them measured):
 
 | Group | Parameters |
 |---|---|
 | Throttle / speed | `TRIM_THROTTLE`, `THR_MAX`, `AIRSPEED_CRUISE`, `AIRSPEED_MIN`, `AIRSPEED_MAX` |
 | Climb | `TECS_PITCH_MAX`, `TECS_CLMB_MAX`, `FBWB_CLIMB_RATE` |
 | Sink / descent | `TECS_PITCH_MIN`, `TECS_SINK_MIN`, `TECS_SINK_MAX`, `STAB_PITCH_DOWN` |
-| Feed-forward | `KFF_THR2PTCH` |
+| Feed-forward | `KFF_THR2PTCH` (always 0; step 7 only records the full-speed pitch, see below) |
+
+#### `KFF_THR2PTCH` is left at 0
+
+Earlier versions calculated it in step 7 ("fly full speed and hold altitude")
+as `pitch - sqrt((TRIM_THROTTLE - throttle) / (TRIM_THROTTLE - 100))`. That
+formula does not match how ArduPlane uses the parameter, so the helper now
+writes `KFF_THR2PTCH=0`. Step 7 is still flown, but only **records** the
+full-speed pitch and throttle: they appear in the log as
+`# full speed (step 7): pitch -1.2 deg at 100% throttle ...` (and next to the
+`KFF_THR2PTCH` value on the Ethos and TX16S mk3 screens).
+
+* ArduPlane adds `KFF_THR2PTCH x throttle% / 100` degrees to the pitch target,
+  counted from **zero** throttle (the same code from 3.x through 4.7). Any
+  non-zero value therefore also moves the nose at cruise throttle, not only at
+  full throttle.
+* The old formula subtracts a 0-1 fraction from a pitch in degrees. At full stick
+  (100 %, which is what `THR_PASS_STAB = 1` gives in FBWA) it always returned
+  `pitch - 1`, i.e. 1 deg more nose-down than measured, and it returned NaN if
+  step 7 was captured below `TRIM_THROTTLE`.
+* Because the value counts from zero throttle, one `KFF_THR2PTCH` cannot make
+  the plane level at both cruise and full throttle without also changing
+  `PTCH_TRIM_DEG`, and a single switch-press reading is too noisy for that.
+* 0 is ArduPlane's default and safe: FBWA is level at cruise; at full throttle
+  the nose sits a little high and the plane climbs gently. Correct it with the
+  stick, or tune `KFF_THR2PTCH` by hand in small steps, using the recorded
+  full-speed pitch as a guide, and re-check level flight at cruise afterwards.
+
+#### ArduPlane Custom builds with adaptive pitch trim
+
+On ArduPlane Custom builds that have adaptive pitch trim (`RCx_OPTION = 254`):
+
+* Run this helper with that switch **LOW** (off). The pitch the helper reads is
+  the aircraft pitch minus the pitch trim, so with adaptive trim on, every
+  captured pitch (`TECS_PITCH_MAX`, `TECS_PITCH_MIN`, `STAB_PITCH_DOWN`) would be
+  shifted by whatever the trim was at that speed.
+* Keep `KFF_THR2PTCH = 0`. Adaptive pitch trim already lowers the nose as speed
+  rises; a non-zero `KFF_THR2PTCH` would add the same correction a second time.
 
 #### 4. Review, write, and verify
 

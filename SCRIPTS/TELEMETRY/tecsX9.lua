@@ -194,7 +194,12 @@ local function processTelemetry(DATA_ID, VALUE,now)
       telemetry.failsafe = bit32.extract(VALUE,12,1)
       telemetry.fencePresent = bit32.extract(VALUE,13,1)
       telemetry.fenceBreached = telemetry.fencePresent == 1 and bit32.extract(VALUE,14,1) or 0 -- we ignore fence breach if fence is disabled
-      telemetry.throttle = math.floor(0.5 + (bit32.extract(VALUE,19,6) * (bit32.extract(VALUE,25,1) == 1 and -1 or 1) * 1.58)) -- signed throttle [-63,63] -> [-100,100]
+      -- signed throttle [-63,63] -> [-100,100], rebuilt at the centre of its
+      -- quantisation bucket (ArduPilot truncates throttle*0.63; see the ETHOS build)
+      local thrRaw = bit32.extract(VALUE,19,6)
+      local thrMag = thrRaw > 0 and math.min(100, math.floor(0.5 + (thrRaw + 0.5) / 0.63)) or 0
+      telemetry.throttle = thrMag * (bit32.extract(VALUE,25,1) == 1 and -1 or 1)
+      telemetry.throttleTime = getTime()
       -- IMU temperature: 0 means temp =< 19°, 63 means temp => 82°
       telemetry.imuTemp = bit32.extract(VALUE,26,6) + 19 -- C°
     elseif DATA_ID == 0x5002 then -- GPS STATUS
