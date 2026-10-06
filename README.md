@@ -288,17 +288,6 @@ full-speed pitch and throttle: they appear in the log as
   stick, or tune `KFF_THR2PTCH` by hand in small steps, using the recorded
   full-speed pitch as a guide, and re-check level flight at cruise afterwards.
 
-#### ArduPlane Custom builds with adaptive pitch trim
-
-On ArduPlane Custom builds that have adaptive pitch trim (`RCx_OPTION = 254`):
-
-* Run this helper with that switch **LOW** (off). The pitch the helper reads is
-  the aircraft pitch minus the pitch trim, so with adaptive trim on, every
-  captured pitch (`TECS_PITCH_MAX`, `TECS_PITCH_MIN`, `STAB_PITCH_DOWN`) would be
-  shifted by whatever the trim was at that speed.
-* Keep `KFF_THR2PTCH = 0`. Adaptive pitch trim already lowers the nose as speed
-  rises; a non-zero `KFF_THR2PTCH` would add the same correction a second time.
-
 #### 4. Review, write, and verify
 
 * **Compare against the originals you noted before tuning** (see the prep section). The pitch/climb/sink limits especially change how the airframe flies — sanity-check anything that looks extreme.
