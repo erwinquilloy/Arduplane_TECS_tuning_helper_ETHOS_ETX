@@ -75,8 +75,7 @@ TECS = {
 -- degrees from ZERO throttle, so no single value is right at both cruise and full
 -- throttle; the old step-7 formula (pitch - sqrt(...)) did not model this at all.
 -- Step 7 still records the full-speed pitch and throttle (FULLSPEED, shown in the
--- log) as a starting point for tuning it by hand. Keep 0 with ArduPlane Custom
--- adaptive pitch trim (RCx_OPTION 254).
+-- log) as a starting point for tuning it by hand.
     KFF_THR2PTCH    = { value = 0,  exporter = function(v) return(0) end },
 }
 
