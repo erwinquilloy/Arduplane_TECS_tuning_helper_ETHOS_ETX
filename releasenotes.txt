@@ -107,3 +107,11 @@
                         applies it. Clamped to +/-5, 0 if no throttle was recorded; the log
                         shows the pitch it gives at the step-8 throttle and at cruise.
                         Step 8 text: fly at your step 2 throttle (THR_MAX). Diagram updated.
+* v0.5.5    06.10.2026  All builds: TECS_PITCH_MAX / TECS_PITCH_MIN are written as the measured
+                        climb and dive pitch (steps 3 and 7). The old exporters widened them by
+                        4 deg (|pitch + 4| and pitch - 4) while the comments said the opposite;
+                        ArduPlane's descriptions and Stavros' calculator use the measured angles.
+                        A wrong-signed or missing reading now gives 0 (= use PTCH_LIM) instead
+                        of being flipped. Step 7 now announces the exported AIRSPEED_MAX
+                        (step-2 speed x 0.95) as the speed not to exceed, not the raw step-2
+                        speed.

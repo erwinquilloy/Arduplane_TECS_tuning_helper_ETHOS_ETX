@@ -299,13 +299,13 @@ local TECS = {
   AIRSPEED_CRUISE = { value = 0,  exporter = function(v) return dmsToMs(v) end },         -- dm/s -> m/s
   THR_MAX         = { value = 0,  exporter = function(v) return v end },                  -- percent
   AIRSPEED_MAX    = { value = 0,  exporter = function(v) return dmsToMs(v * 0.95) end },  -- dm/s -> m/s * 0.95
-  TECS_PITCH_MAX  = { value = -4, exporter = function(v) return math.abs(v + 4) end },    -- +deg  (-4 margin)
+  TECS_PITCH_MAX  = { value = 0,  exporter = function(v) return math.max(0, v) end },     -- +deg  measured climb pitch
   TECS_CLMB_MAX   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- +m/s
   FBWB_CLIMB_RATE = { value = 0,  exporter = function(v) return clampMs(v) end },         -- m/s
   AIRSPEED_MIN    = { value = 0,  exporter = function(v) return dmsToMs(v) end },         -- m/s
   STAB_PITCH_DOWN = { value = 0,  exporter = function(v) return math.abs(v) end },        -- deg
   TECS_SINK_MIN   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- m/s
-  TECS_PITCH_MIN  = { value = 4,  exporter = function(v) return v - 4 end },              -- -deg  (+4 margin)
+  TECS_PITCH_MIN  = { value = 0,  exporter = function(v) return math.min(0, v) end },     -- -deg  measured dive pitch
   TECS_SINK_MAX   = { value = 0,  exporter = function(v) return clampMs(v) end },         -- +m/s
   -- KFF_THR2PTCH (step 8) = pitch * 100 / throttle (Stavros' ArduPilot setup checklist).
   -- ArduPlane adds KFF_THR2PTCH x throttle%/100 degrees counted from ZERO throttle, so
@@ -447,7 +447,7 @@ local stepDef = {
       playFile("tecs51.wav")
       system.playNumber(clampMs(TECS.TECS_SINK_MIN.value), UNIT_METER_PER_SECOND, 0)
       playFile("tecs60.wav")
-      system.playNumber(dmsToKph(TECS.AIRSPEED_MAX.value), UNIT_KPH, 0)
+      system.playNumber(dmsToKph(TECS.AIRSPEED_MAX.value * 0.95), UNIT_KPH, 0)
     end,
     fn = function(widget)
       TECS.TECS_PITCH_MIN.value = telemetry.pitch

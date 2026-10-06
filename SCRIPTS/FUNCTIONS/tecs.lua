@@ -59,7 +59,7 @@ TECS = {
     THR_MAX         = { value = 0,  exporter = function(v) return(v) end }, 							-- raw: percent,  output: percent
 	AIRSPEED_MAX   = { value = 0,  exporter = function(v) return( DMS_to_MS(v * 0.95 ) ) end },   		-- raw: dm/s output: m/s * 0.95
 --3
-    TECS_PITCH_MAX  = { value = -4, exporter = function(v) return(math.abs(v + 4)) end },    			-- raw: deg	output: +deg 4deg
+    TECS_PITCH_MAX  = { value = 0,  exporter = function(v) return(math.max(0, v)) end },    			-- raw: deg	output: measured climb pitch (>= 0)
 	TECS_CLMB_MAX   = { value = 0,  exporter = function(v) return (math.min(math.abs(0.1*v),10)) end }, -- raw: dm/s output: +m/s
     FBWB_CLIMB_RATE = { value = 0,  exporter = function(v) return (math.min(math.abs(0.1*v),10)) end }, -- raw: dm/s output: m/s
 --4
@@ -68,7 +68,7 @@ TECS = {
     STAB_PITCH_DOWN = { value = 0,  exporter = function(v) return(math.abs(v)) end },   				-- deg
     TECS_SINK_MIN   = { value = 0,  exporter = function(v) return(math.min(math.abs(0.1*v),10)) end },  -- raw: dm/s , output: m/s
 --6
-    TECS_PITCH_MIN  = { value = 4,  exporter = function(v) return(v - 4) end },    						-- raw deg output: +/-deg - 4
+    TECS_PITCH_MIN  = { value = 0,  exporter = function(v) return(math.min(0, v)) end },    						-- raw deg output: measured dive pitch (<= 0)
     TECS_SINK_MAX   = { value = 0,  exporter = function(v) return(math.min(math.abs(0.1*v),10))  end }, -- raw: dm/s output: +m/s
 --7
 -- KFF_THR2PTCH (step 8) = pitch * 100 / throttle (Stavros' ArduPilot setup checklist).
@@ -175,9 +175,9 @@ local stepDef = {
 			playNumber( math.min(math.abs(0.1*TECS['TECS_SINK_MIN'].value),10), 5)
 
             playFile("tecs60.wav") 
-            playNumber( DMs_to_KPH(TECS['AIRSPEED_MAX'].value) ,7)
+            playNumber( DMs_to_KPH(TECS['AIRSPEED_MAX'].value * 0.95) ,7)
         end,
-        text = function(arg)    return string.format("continue with zero throttle and pitch down until airspeed reaches %s kph",DMs_to_KPH(TECS['AIRSPEED_MAX'].value))        end,
+        text = function(arg)    return string.format("continue with zero throttle and pitch down until airspeed reaches %s kph",DMs_to_KPH(TECS['AIRSPEED_MAX'].value * 0.95))        end,
         fn   = function(arg)
             TECS['TECS_PITCH_MIN'].value =	telemetry.pitch 		-- "-24" --
             TECS['TECS_SINK_MAX'].value  =	telemetry.vSpeed 		-- 120 -- 
