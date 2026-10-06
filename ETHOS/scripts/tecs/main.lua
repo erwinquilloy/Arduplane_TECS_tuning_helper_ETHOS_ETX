@@ -533,6 +533,10 @@ local function advance(widget)
   end
   widget.warn = nil
   if widget.step == 1 then
+    -- a new run starts: clear the previous run's values so an aborted run
+    -- can never show (or log) a mix of old and new readings
+    for _, p in pairs(TECS) do p.value = 0 end
+    FULLSPEED.pitch, FULLSPEED.thr, FULLSPEED.kffRaw = nil, nil, 0
     stepDef[1].audio()
     widget.step = 2
   else

@@ -334,10 +334,10 @@ the step was captured below `TRIM_THROTTLE`.
 * Reboot the flight controller if your ground station recommends it for the changed params.
 * Test conservatively on the next flight — keep altitude and be ready to switch back to a manual mode.
 
-> Re-running the sequence overwrites the on-screen values in place; it does **not**
-> reset them. A partial re-run therefore leaves earlier parameters at their
-> previous readings, and the next log file will contain that mix — finish a full
-> run before trusting a log.
+> Starting a new run (the first switch press) clears all values from the
+> previous run, on screen and for the next log. A run you abandon part-way
+> therefore shows only its own readings; finish a full run before trusting a
+> log. Earlier runs' log files stay on the SD card.
 
 
 ![](_img/tecs_tuning_process.png)

@@ -257,6 +257,10 @@ local function runTTA()
     if extime+exdelay < getTime() then
 
          if step == 1 then
+             -- a new run starts: clear the previous run's values so an aborted run
+             -- can never show (or log) a mix of old and new readings
+             for _, p in pairs(TECS) do p.value = 0 end
+             FULLSPEED.pitch, FULLSPEED.thr, FULLSPEED.kffRaw = nil, nil, 0
              stepDef["step"..step]["audio"]()                                    -- play audio
              step=step+1
          else
