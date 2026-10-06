@@ -354,7 +354,7 @@ local function processTelemetry(DATA_ID, VALUE,now)
 -------- from tecs.lua
 
 local step=1            -- init
-local stepCount = 7     -- step/loop count
+local stepCount = 8     -- step/loop count
 local f                 -- logfile handle
 local exdelay = 250     -- this limits opentx to fire the script too often
 local debug = true		-- for printing debug and raw messages
@@ -401,16 +401,16 @@ TECS = {
     TECS_PITCH_MIN  = { value = 4,  exporter = function(v) return(v - 4) end },    						-- raw deg output: +/-deg - 4
     TECS_SINK_MAX   = { value = 0,  exporter = function(v) return(math.min(math.abs(0.1*v),10))  end }, -- raw: dm/s output: +m/s
 --7
--- KFF_THR2PTCH is always written as 0. ArduPlane adds KFF_THR2PTCH x throttle%/100
--- degrees from ZERO throttle, so no single value is right at both cruise and full
--- throttle; the old step-7 formula (pitch - sqrt(...)) did not model this at all.
--- Step 7 still records the full-speed pitch and throttle (FULLSPEED, shown in the
--- log) as a starting point for tuning it by hand.
-    KFF_THR2PTCH    = { value = 0,  exporter = function(v) return(0) end },
+-- KFF_THR2PTCH (step 8) = pitch * 100 / throttle (Stavros' ArduPilot setup checklist).
+-- ArduPlane adds KFF_THR2PTCH x throttle%/100 degrees counted from ZERO throttle, so
+-- this is exact at the step-8 throttle, and at cruise it also adds
+-- KFF_THR2PTCH x TRIM_THROTTLE/100 degrees. Clamped to ArduPlane's documented
+-- range (-5..5); 0 if no throttle was recorded.
+    KFF_THR2PTCH    = { value = 0,  exporter = function(v) return(math.floor(v * 100 + 0.5) / 100) end },
 }
 
--- step 7 record (not a parameter): pitch (deg) and throttle (%) at full speed
-FULLSPEED = { pitch = nil, thr = nil }
+-- step 8 record (not a parameter): pitch (deg) and throttle (%) at full speed, raw KFF
+FULLSPEED = { pitch = nil, thr = nil, kffRaw = 0 }
 
 
 -- these are the tuning steps
@@ -478,14 +478,27 @@ local stepDef = {
             playFile("tecs50.wav") 
             playNumber( DMs_to_KPH(TECS['AIRSPEED_MIN'].value) ,7)
         end,
-        text = function(arg)    return string.format("gain some altitude, then cut throttle and pitch down until airspeed reaches %s kph",DMs_to_KPH(TECS['AIRSPEED_MIN'].value))        end,
+        text = function(arg)    return string.format("gain some altitude, then cut throttle and pitch down just enough to hold %s kph",DMs_to_KPH(TECS['AIRSPEED_MIN'].value))        end,
         fn   = function(arg)
+            -- 5a: smallest nose-down that holds AIRSPEED_MIN with the throttle cut
             TECS['STAB_PITCH_DOWN'].value = telemetry.pitch 	-- "-3" -- 
-            TECS['TECS_SINK_MIN'].value =  	telemetry.vSpeed 	-- 20 --
             return
         end,
     },
     step6 = {
+        -- 5b: TECS_SINK_MIN is the sink rate at THR_MIN and AIRSPEED_CRUISE (ArduPlane
+        -- docs; TECS's throttle model pairs it with TECS_CLMB_MAX at the same speed)
+        audio = function() 
+            playFile("tecs50.wav") 
+            playNumber( DMs_to_KPH(TECS['AIRSPEED_CRUISE'].value) ,7)
+        end,
+        text = function(arg)    return string.format("keep the throttle cut and pitch down until airspeed reaches %s kph",DMs_to_KPH(TECS['AIRSPEED_CRUISE'].value))        end,
+        fn   = function(arg)
+            TECS['TECS_SINK_MIN'].value =  	telemetry.vSpeed 	-- 20 --
+            return
+        end,
+    },
+    step7 = {
         audio = function() 
             playFile("tecs51.wav") 
 			playNumber( math.min(math.abs(0.1*TECS['TECS_SINK_MIN'].value),10), 5)
@@ -500,18 +513,24 @@ local stepDef = {
             return
         end
     },
-    step7 = {
+    step8 = {
         audio = function() 		
 			playFile("tecs61.wav") 
 			playNumber( math.min(math.abs(0.1*TECS['TECS_SINK_MAX'].value),10), 5)
 
 			playFile("tecs70.wav") 
 		end,
-        text  = function(arg)   return string.format("fly full speed and try to hold altitude")        end,
+        text  = function(arg)   return string.format("fly at your step 2 throttle (THR_MAX) and hold altitude")        end,
         fn    = function(arg)
-            -- record only: KFF_THR2PTCH stays 0 (see the note at TECS above)
             FULLSPEED.pitch = telemetry.pitch
             FULLSPEED.thr   = getThrottlePct()
+            -- Stavros: KFF_THR2PTCH = pitch * 100 / throttle (see the note at TECS above)
+            local kff = 0
+            if FULLSPEED.thr ~= nil and FULLSPEED.thr > 0 then
+                kff = FULLSPEED.pitch * 100 / FULLSPEED.thr
+            end
+            FULLSPEED.kffRaw = kff
+            TECS['KFF_THR2PTCH'].value = math.max(-5, math.min(5, kff))
             return
         end
     },
@@ -576,10 +595,15 @@ local function logTECS(TECS)
 		end
 		io.write(f, string.format("%s=%s\r\n", param, exportValue ))
 	end
-	if FULLSPEED.pitch ~= nil then
-		io.write(f, string.format("# full speed (step 7): pitch %.1f deg at %d%% throttle - KFF_THR2PTCH left at 0, see README\r\n", FULLSPEED.pitch, FULLSPEED.thr))
+	if FULLSPEED.pitch ~= nil and FULLSPEED.thr ~= nil and FULLSPEED.thr > 0 then
+		local kff = TECS['KFF_THR2PTCH'].value
+		io.write(f, string.format("# KFF_THR2PTCH = pitch*100/throttle (Stavros): step 8 pitch %.1f deg at %d%% throttle\r\n", FULLSPEED.pitch, FULLSPEED.thr))
+		io.write(f, string.format("#   gives %.1f deg at %d%% and %.1f deg at %d%% cruise (TRIM_THROTTLE)\r\n", kff * FULLSPEED.thr / 100, FULLSPEED.thr, kff * TECS['TRIM_THROTTLE'].value / 100, TECS['TRIM_THROTTLE'].value))
+		if math.abs(FULLSPEED.kffRaw) > 5 then
+			io.write(f, string.format("#   clamped to the ArduPlane range +/-5 (calculated %.2f)\r\n", FULLSPEED.kffRaw))
+		end
 	else
-		io.write(f, "# KFF_THR2PTCH left at 0, see README\r\n")
+		io.write(f, "# KFF_THR2PTCH: step 8 not recorded - left at 0\r\n")
 	end
 	
 	if debug then

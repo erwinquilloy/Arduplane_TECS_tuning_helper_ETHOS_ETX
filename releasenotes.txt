@@ -95,3 +95,15 @@
                         the text no longer overlaps with the mk3's larger font. Also shows the
                         step-7 full-speed pitch/throttle next to KFF_THR2PTCH. README lists
                         which widget to install for which screen.
+* v0.5.4    06.10.2026  All builds: old step 5 split in two (8 steps now). ArduPlane defines
+                        TECS_SINK_MIN as the sink rate at zero throttle and AIRSPEED_CRUISE
+                        (TECS's throttle model pairs it with TECS_CLMB_MAX at cruise speed),
+                        but step 5 measured it at AIRSPEED_MIN. Step 5 now captures only
+                        STAB_PITCH_DOWN (just enough nose-down to hold minimum speed); new
+                        step 6 keeps the throttle cut and pitches down to cruise speed for
+                        TECS_SINK_MIN (reuses tecs50.wav with the cruise speed).
+                        KFF_THR2PTCH (step 8) = pitch * 100 / throttle, the formula from
+                        Stavros' ArduPilot setup checklist, which matches how ArduPlane
+                        applies it. Clamped to +/-5, 0 if no throttle was recorded; the log
+                        shows the pitch it gives at the step-8 throttle and at cruise.
+                        Step 8 text: fly at your step 2 throttle (THR_MAX). Diagram updated.

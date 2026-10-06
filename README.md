@@ -188,9 +188,8 @@ parentheses.
   hold the requested condition with the stick), and the pitch the helper reads
   only has `PTCH_TRIM_DEG` removed, not `KFF_THR2PTCH`. It only changes how much
   stick you need (e.g. `+0.7` lifts the nose about 0.35° at 50 % throttle).
-  The log writes `KFF_THR2PTCH=0`: skip that line when applying if you want to
-  keep your value, or set it to 0 before the run so the plane already flies the
-  way it will after tuning.
+  The log writes a new `KFF_THR2PTCH` from step 8: skip that line when applying
+  if you want to keep your own value.
 
 > Several of these (the pitch limits especially) change how the airframe flies.
 > Note your original values first so you can restore them once tuning is done.
@@ -207,6 +206,24 @@ parentheses.
 	* 	follow the instructions to get _and_ hold the plane in the requested attitude and/or speed [**give the telemetry here 1 or 2 second to update**]
 	*  engage the switch again to save the values
 	*  repeat
+*  The steps, in order (all in FBWA):
+
+	| Step | Fly | Captured |
+	|---|---|---|
+	| 1 | level at your desired cruise speed | `TRIM_THROTTLE`, `AIRSPEED_CRUISE` |
+	| 2 | level at your desired maximum speed | `THR_MAX`, `AIRSPEED_MAX` (× 0.95) |
+	| 3 | same throttle, pitch up until airspeed is back at cruise speed | `TECS_PITCH_MAX`, `TECS_CLMB_MAX`, `FBWB_CLIMB_RATE` |
+	| 4 | as slow as is safe, including banked turns | `AIRSPEED_MIN` |
+	| 5 | throttle cut, pitch down just enough to hold minimum speed | `STAB_PITCH_DOWN` |
+	| 6 | throttle still cut, pitch down until airspeed reaches cruise speed | `TECS_SINK_MIN` |
+	| 7 | throttle still cut, pitch down until airspeed reaches maximum speed | `TECS_PITCH_MIN`, `TECS_SINK_MAX` |
+	| 8 | at your step-2 throttle (`THR_MAX`), hold altitude | `KFF_THR2PTCH` |
+
+	Steps 5 and 6 are separate because ArduPlane defines `TECS_SINK_MIN` as the
+	sink rate at zero throttle **and cruise airspeed** (TECS pairs it with
+	`TECS_CLMB_MAX`, which is measured at cruise speed in step 3), while
+	`STAB_PITCH_DOWN` is the smallest nose-down that keeps a throttle-cut glide
+	from stalling.
 *  Once finished your TECS screen should be filled with numbers
 *  a logfile is written to your radio's SD card:
 	*  **EdgeTX** (TX16S etc.): `/LOGS/tecs_<timestamp>.txt`
@@ -253,40 +270,52 @@ modified-time to find the newest file.
 2. **Merge the log in Mission Planner (recommended).** In *Config → Full Parameter List* use **Load from file** (or **Compare Params**) and point it at `tecs_<timestamp>.txt`. Review the diff it shows, then **Write Params**. Fastest and least error-prone for the full set. *(The file's `NAME=value` layout matches the param format; if your MP version is strict about it, paste the values into the matching rows manually.)*
 3. **Copy from the screen.** No computer? Read the values straight off the TECS telemetry screen and enter them in your ground station over a telemetry/Bluetooth link.
 
-The parameters this tool sets (13 total, 12 of them measured):
+The parameters this tool sets (13 total):
 
 | Group | Parameters |
 |---|---|
 | Throttle / speed | `TRIM_THROTTLE`, `THR_MAX`, `AIRSPEED_CRUISE`, `AIRSPEED_MIN`, `AIRSPEED_MAX` |
 | Climb | `TECS_PITCH_MAX`, `TECS_CLMB_MAX`, `FBWB_CLIMB_RATE` |
 | Sink / descent | `TECS_PITCH_MIN`, `TECS_SINK_MIN`, `TECS_SINK_MAX`, `STAB_PITCH_DOWN` |
-| Feed-forward | `KFF_THR2PTCH` (always 0; step 7 only records the full-speed pitch, see below) |
+| Feed-forward | `KFF_THR2PTCH` (step 8, see below) |
 
-#### `KFF_THR2PTCH` is left at 0
+#### How `KFF_THR2PTCH` is calculated
 
-Earlier versions calculated it in step 7 ("fly full speed and hold altitude")
-as `pitch - sqrt((TRIM_THROTTLE - throttle) / (TRIM_THROTTLE - 100))`. That
-formula does not match how ArduPlane uses the parameter, so the helper now
-writes `KFF_THR2PTCH=0`. Step 7 is still flown, but only **records** the
-full-speed pitch and throttle: they appear in the log as
-`# full speed (step 7): pitch -1.2 deg at 100% throttle ...` (and next to the
-`KFF_THR2PTCH` value on the Ethos and TX16S mk3 screens).
+Step 8 uses the formula from Stavros'
+[ArduPilot setup checklist](https://notes.stavros.io/ardupilot/ardupilot-setup-checklist/#in-the-field):
+
+```
+KFF_THR2PTCH = pitch * 100 / throttle
+```
+
+where `pitch` is the pitch you hold to fly level in step 8 (negative = nose
+down) and `throttle` is the step-8 throttle in %. The log explains the result:
+
+```
+KFF_THR2PTCH=-1.37
+# KFF_THR2PTCH = pitch*100/throttle (Stavros): step 8 pitch -1.0 deg at 73% throttle
+#   gives -1.0 deg at 73% and -0.6 deg at 43% cruise (TRIM_THROTTLE)
+```
 
 * ArduPlane adds `KFF_THR2PTCH x throttle% / 100` degrees to the pitch target,
-  counted from **zero** throttle (the same code from 3.x through 4.7). Any
-  non-zero value therefore also moves the nose at cruise throttle, not only at
-  full throttle.
-* The old formula subtracts a 0-1 fraction from a pitch in degrees. At full stick
-  (100 %, which is what `THR_PASS_STAB = 1` gives in FBWA) it always returned
-  `pitch - 1`, i.e. 1 deg more nose-down than measured, and it returned NaN if
-  step 7 was captured below `TRIM_THROTTLE`.
-* Because the value counts from zero throttle, one `KFF_THR2PTCH` cannot make
-  the plane level at both cruise and full throttle without also changing
-  `PTCH_TRIM_DEG`, and a single switch-press reading is too noisy for that.
-* 0 is ArduPlane's default and safe: FBWA is level at cruise; at full throttle
-  the nose sits a little high and the plane climbs gently. Correct it with the
-  stick, or tune `KFF_THR2PTCH` by hand in small steps, using the recorded
-  full-speed pitch as a guide, and re-check level flight at cruise afterwards.
+  counted from **zero** throttle (the same code from 3.x through 4.7). The
+  formula is therefore exact at the step-8 throttle, and it also tilts the nose
+  at cruise throttle by `KFF_THR2PTCH x TRIM_THROTTLE / 100` (the second log
+  line). A single value can't be exact at both.
+* Fly step 8 at the throttle you actually use as "full" (your step-2 `THR_MAX`),
+  not necessarily 100 %: outside the tuning run the flight controller never
+  goes above `THR_MAX`.
+* The value is clamped to ArduPlane's documented range of ±5 (the log says so
+  when that happens), and left at 0 if no step-8 throttle was recorded.
+* `KFF_THR2PTCH = 0` (ArduPlane's default) is also safe: FBWA is level at
+  cruise, and at full throttle the nose sits a little high and the plane climbs
+  gently. Skip the `KFF_THR2PTCH` line when applying if you prefer that, or if
+  you already tuned it by hand.
+
+Earlier versions used `pitch - sqrt((TRIM_THROTTLE - throttle) / (TRIM_THROTTLE - 100))`.
+That doesn't match how ArduPlane uses the parameter: at full stick it always
+returned `pitch - 1` (1° more nose-down than measured), and it returned NaN if
+the step was captured below `TRIM_THROTTLE`.
 
 #### 4. Review, write, and verify
 
