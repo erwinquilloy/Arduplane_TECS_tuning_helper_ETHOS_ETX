@@ -176,8 +176,11 @@ parentheses.
       `LIM_PITCH_MIN = -4500`, in centidegrees.)*
 * **Get a raw (non-remapped) throttle reading** while measuring: set
   `THR_PASS_STAB = 1`.
-* **Enable throttle battery-voltage compensation** so a partly-drained pack
-  doesn't make the motor — and therefore your measurements — run slow:
+* **Fly the run on a fresh pack and keep it short.** A sagging pack weakens the
+  step-3 climb and raises the step-8 throttle. Throttle battery-voltage
+  compensation isn't active in FBWA, so it doesn't protect these measurements,
+  but keep it enabled: in auto modes it keeps the measured values valid as the
+  pack drains:
     * `FWD_BAT_VOLT_MAX = 4.2 * cells` (Li-Ion or LiPo)
     * `FWD_BAT_VOLT_MIN = 3.0 * cells` (Li-Ion) or `3.5 * cells` (LiPo)
 * **Have pitch and airspeed visible.** This widget already shows both on the
@@ -218,6 +221,13 @@ parentheses.
 	| 6 | throttle still cut, pitch down until airspeed reaches cruise speed | `TECS_SINK_MIN` |
 	| 7 | throttle still cut, pitch down until airspeed reaches maximum speed | `TECS_PITCH_MIN`, `TECS_SINK_MAX` |
 	| 8 | at your step-2 throttle (`THR_MAX`), hold altitude | `KFF_THR2PTCH` |
+
+	**Choosing `THR_MAX` (step 2).** The throttle you hold in step 2 becomes
+	`THR_MAX`: the throttle limit in auto-throttle modes (and in FBWA once
+	`THR_PASS_STAB` is back to 0), measured at full battery. Choose it by what
+	your motor, ESC and battery can sustain, not just a comfortable fast cruise,
+	because it also caps climbs in AUTO and RTL. If the step-3 climb at that
+	throttle is too slow for your flying, raise `THR_MAX` and redo steps 2–3.
 
 	Steps 5 and 6 are separate because ArduPlane defines `TECS_SINK_MIN` as the
 	sink rate at zero throttle **and cruise airspeed** (TECS pairs it with

@@ -378,7 +378,7 @@ local stepDef = {
     end,
   },
   [2] = {
-    text = "Now accelerate to your desired maximum cruise speed.",
+    text = "Set your max throttle for auto modes, fly level until speed settles.",
     audio = function()
       playFile("tecs11.wav")
       system.playNumber(dmsToKph(TECS.AIRSPEED_CRUISE.value), UNIT_KPH, 0)

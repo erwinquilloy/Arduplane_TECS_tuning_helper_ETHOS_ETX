@@ -432,7 +432,7 @@ local stepDef = {
 			
 			playFile("tecs20.wav")
 		end,  
-        text  = function(arg)   return "now accelerate to your desired maximum cruise speed" end, 
+        text  = function(arg)   return "set your max throttle for auto modes, fly level until speed settles" end, 
         fn    = function(arg)
             TECS['THR_MAX'].value 		= getThrottlePct()		-- 80 -- 
             TECS['AIRSPEED_MAX'].value = (telemetry.airspeed ~= 0 and telemetry.airspeed) or telemetry.hSpeed 		-- 230 -- "82kph"
