@@ -182,6 +182,15 @@ parentheses.
     * `FWD_BAT_VOLT_MIN = 3.0 * cells` (Li-Ion) or `3.5 * cells` (LiPo)
 * **Have pitch and airspeed visible.** This widget already shows both on the
   telemetry screen; adding them to your OSD helps you cross-check in the air.
+* **A `KFF_THR2PTCH` you already tuned can stay as it is.** It doesn't change
+  any value the helper captures: every reading is a physical value (airspeed,
+  throttle, climb/sink rate, and the pitch the plane actually flies at while you
+  hold the requested condition with the stick), and the pitch the helper reads
+  only has `PTCH_TRIM_DEG` removed, not `KFF_THR2PTCH`. It only changes how much
+  stick you need (e.g. `+0.7` lifts the nose about 0.35° at 50 % throttle).
+  The log writes `KFF_THR2PTCH=0`: skip that line when applying if you want to
+  keep your value, or set it to 0 before the run so the plane already flies the
+  way it will after tuning.
 
 > Several of these (the pitch limits especially) change how the airframe flies.
 > Note your original values first so you can restore them once tuning is done.
