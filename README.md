@@ -66,11 +66,14 @@ Requirements on the aircraft side are identical to the EdgeTX version
 `/scripts/tecs/tecs_<timestamp>.txt`.
 
 ### Installation EdgeTX color radios (RadioMaster TX16S mk2 & mk3, Horus X10/X12, ...)
-This is the EdgeTX widget. It runs unchanged on any 480x272 color widget
-radio, including the RadioMaster **TX16S mk2 and mk3** (both run EdgeTX with the
-same Lua widget API — no separate build is needed for either revision).
+This is the EdgeTX widget. There are two builds, pick the one for your screen:
 
-* copy `WIDGETS/TECS/main.lua` to your SD card
+* **480x272** radios (TX16S mk2, Horus X10/X12, ...): `WIDGETS/TECS/main.lua` (widget name **TECS**)
+* **800x480** radios (TX16S mk3): `WIDGETS/TECS_MK3/main.lua` (widget name **TECS MK3**).
+  It sizes its rows and columns from the radio's font, so the text doesn't overlap
+  with the mk3's larger font.
+
+* copy the matching `WIDGETS/...` folder to your SD card `/WIDGETS/`
 * Choose your prefered voice and copy the custom sounds from `SOUNDS/\<voice-of-your-choice\>.zip` to your SD-card `/SOUNDS/en/`
 * unload/remove yaapu Telemetry Script temporarily from the active Widgets List
 * load the TECS widget as fullscreen widget

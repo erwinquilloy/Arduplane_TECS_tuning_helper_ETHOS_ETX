@@ -90,3 +90,9 @@
                         last 2 s.
                         README: why KFF_THR2PTCH stays 0, and running the helper on ArduPlane
                         Custom builds with adaptive pitch trim (switch LOW).
+* v0.5.3    06.10.2026  EdgeTX: new WIDGETS/TECS_MK3/main.lua (widget name "TECS MK3") for
+                        800x480 radios (TX16S mk3). Same tuning steps and telemetry as the
+                        TECS widget, but rows and columns are sized from the radio's font, so
+                        the text no longer overlaps with the mk3's larger font. Also shows the
+                        step-7 full-speed pitch/throttle next to KFF_THR2PTCH. README lists
+                        which widget to install for which screen.
