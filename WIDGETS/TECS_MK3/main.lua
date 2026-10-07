@@ -461,6 +461,8 @@ local stepDef = {
         audio = function() 		
 			playFile("tecs32.wav")
 			playNumber( math.min(math.abs(0.1*TECS['TECS_CLMB_MAX'].value),10), 5)
+			playFile("tecs33.wav")
+			playNumber( math.floor(math.max(0, TECS['TECS_PITCH_MAX'].value) + 0.5), 20)
 
 			playFile("tecs40.wav") 
 		end,
@@ -489,7 +491,9 @@ local stepDef = {
         -- 5b: TECS_SINK_MIN is the sink rate at THR_MIN and AIRSPEED_CRUISE (ArduPlane
         -- docs; TECS's throttle model pairs it with TECS_CLMB_MAX at the same speed)
         audio = function() 
-            playFile("tecs50.wav") 
+            playFile("tecs52.wav")
+            playNumber( math.floor(math.abs(TECS['STAB_PITCH_DOWN'].value) + 0.5), 20)
+            playFile("tecs53.wav")
             playNumber( DMs_to_KPH(TECS['AIRSPEED_CRUISE'].value) ,7)
         end,
         text = function(arg)    return string.format("keep the throttle cut and pitch down until airspeed reaches %s kph",DMs_to_KPH(TECS['AIRSPEED_CRUISE'].value))        end,

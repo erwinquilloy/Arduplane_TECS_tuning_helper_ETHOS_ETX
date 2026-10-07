@@ -7,8 +7,8 @@ tecs*.wav files here.
 
 Files used by the widget:
   tecs10.wav  tecs11.wav  tecs20.wav  tecs21.wav  tecs30.wav  tecs31.wav
-  tecs32.wav  tecs40.wav  tecs41.wav  tecs50.wav  tecs51.wav  tecs60.wav
-  tecs61.wav  tecs70.wav  tecsf.wav
+  tecs32.wav  tecs33.wav  tecs40.wav  tecs41.wav  tecs50.wav  tecs51.wav
+  tecs52.wav  tecs53.wav  tecs60.wav  tecs61.wav  tecs70.wav  tecsf.wav
 
 Numbers and units (km/h, m/s, %) are spoken with the radio's built-in
 system.playNumber(), so only the tecs*.wav prompts above are required here.

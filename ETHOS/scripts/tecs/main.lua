@@ -410,6 +410,8 @@ local stepDef = {
     audio = function()
       playFile("tecs32.wav")
       system.playNumber(clampMs(TECS.TECS_CLMB_MAX.value), UNIT_METER_PER_SECOND, 0)
+      playFile("tecs33.wav")
+      system.playNumber(math.floor(math.max(0, TECS.TECS_PITCH_MAX.value) + 0.5), UNIT_DEGREE, 0)
       playFile("tecs40.wav")
     end,
     fn = function(widget)
@@ -434,7 +436,9 @@ local stepDef = {
     -- docs; TECS's throttle model pairs it with TECS_CLMB_MAX at the same speed)
     text = "Keep the throttle cut and pitch down until airspeed reaches cruise speed.",
     audio = function()
-      playFile("tecs50.wav")
+      playFile("tecs52.wav")
+      system.playNumber(math.floor(math.abs(TECS.STAB_PITCH_DOWN.value) + 0.5), UNIT_DEGREE, 0)
+      playFile("tecs53.wav")
       system.playNumber(dmsToKph(TECS.AIRSPEED_CRUISE.value), UNIT_KPH, 0)
     end,
     fn = function(widget)
